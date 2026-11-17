@@ -20,8 +20,9 @@ which is what CUPS does by default when the printer fails, the job staying
 pending) also makes an unfinished job ERROR, so a stopped printer ends in
 ERROR after 10 s rather than waiting for the timeout.
 
-The snapshot's ``flags`` are the CUPS job-state name and its
-``job-state-reasons``; its text is the printer's message.
+The snapshot's only flag is the CUPS job-state name, so a history entry is
+made when the job state (or JobState) changes, not on every change of
+``job-state-reasons``; the reasons and the printer's message are its text.
 
 With pycups the job is read with ``getJobAttributes``. Without it ``lpstat``
 is used: ``lpstat -o QUEUE`` lists the queue's unfinished jobs and
@@ -55,8 +56,6 @@ _JOB_STATES = {
     8: JobState.ERROR,
     9: JobState.DONE,
 }
-# Job states that are not finished, so a stopped queue makes them ERROR.
-_UNFINISHED = frozenset({3, 4, 5})
 JOB_ABORTED = 8
 PRINTER_STOPPED = 5
 # IPP status-code client-error-not-found.
@@ -75,9 +74,11 @@ def job_id_from_lp(stdout: str) -> Optional[int]:
 
 def job_state(cups_state: int, printer_stopped: bool = False) -> JobState:
     """The :class:`JobState` for a CUPS job state (see the module table)."""
-    if printer_stopped and cups_state in _UNFINISHED:
+    state = _JOB_STATES.get(cups_state, JobState.ACTIVE)
+    # A stopped queue makes an unfinished job ERROR.
+    if printer_stopped and state is JobState.ACTIVE:
         return JobState.ERROR
-    return _JOB_STATES.get(cups_state, JobState.ACTIVE)
+    return state
 
 
 def _run_lpstat(args: list[str]) -> str:
@@ -152,9 +153,8 @@ class CupsJobPoller:  # pylint: disable=too-few-public-methods
         reasons = job.get("job-state-reasons") or []
         if isinstance(reasons, str):
             reasons = [reasons]
-        flags = [JOB_STATE_NAMES.get(state, f"state {state}")]
-        flags += [str(reason) for reason in reasons if reason != "none"]
-        parts = []
+        flag = JOB_STATE_NAMES.get(state, f"state {state}")
+        parts = [str(reason) for reason in reasons if reason != "none"]
         message = job.get("job-printer-state-message") or ""
         if stopped:
             message = message or printer.get("printer-state-message") or ""
@@ -163,7 +163,7 @@ class CupsJobPoller:  # pylint: disable=too-few-public-methods
             parts.append(str(message))
         if state == JOB_ABORTED:
             self._aborted_seen = True
-        return self._snapshot(job_state(state, stopped), tuple(flags), "; ".join(parts))
+        return self._snapshot(job_state(state, stopped), (flag,), "; ".join(parts))
 
     def _poll_lpstat(self) -> Optional[JobSnapshot]:
         request = f"{self.printer_name}-{self.job_id}"

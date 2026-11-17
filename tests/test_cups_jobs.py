@@ -109,9 +109,24 @@ class IppTrackingTests(unittest.TestCase):
             ["pending", "processing", "completed"],
         )
 
-    def test_reasons_are_flags_and_messages_are_text(self):
-        result = track(poller(FakeConnection([9], reasons=["job-completed-ok"])))
-        self.assertEqual(result.history, ["+0.0s completed,job-completed-ok"])
+    def test_reasons_are_text_and_do_not_add_history_entries(self):
+        connection = FakeConnection([5, 5, 9], reasons=["job-printing"])
+        poll = poller(connection)
+        result = PrintResult(printer_name=QUEUE, job_name="IBP Label [abc]", job_id=12)
+        clock = Clock()
+        reasons = iter([["job-printing"], ["cups-waiting-for-job-completed"], []])
+        original = connection.getJobAttributes
+
+        def attributes(job_id, requested_attributes=None):
+            job = original(job_id, requested_attributes)
+            job["job-state-reasons"] = next(reasons)
+            return job
+
+        connection.getJobAttributes = attributes
+        track_job(result, poll, timeout_s=60, clock=clock, sleep=clock.sleep)
+        self.assertEqual(
+            result.history, ["+0.0s processing (job-printing)", "+1.0s completed"]
+        )
 
     def test_canceled(self):
         result = track(poller(FakeConnection([5, 7])))
