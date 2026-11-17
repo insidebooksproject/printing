@@ -22,7 +22,7 @@ from test_direct_backend import (
 
 import ibp_printing
 from ibp_printing import PrintQueue
-from ibp_printing import diagnostics
+from ibp_printing.diagnostics import listen
 from ibp_printing.diagnostics import EXIT_DIRECT_NOT_SENT, build_report, main
 from ibp_printing.direct import config as direct_config
 from ibp_printing.direct.transport import (
@@ -376,7 +376,7 @@ class ListenTests(DiagTestCase):
 
     def setUp(self):
         super().setUp()
-        patcher = mock.patch.object(diagnostics, "_now", FakeClock())
+        patcher = mock.patch.object(listen, "_now", FakeClock())
         patcher.start()
         self.addCleanup(patcher.stop)
 
