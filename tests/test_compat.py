@@ -22,8 +22,21 @@ class CompatTests(unittest.TestCase):
         self.assertIn("set_journal_path", old_labels.__all__)
 
     def test_diagnostics(self):
-        for name in old_diagnostics.__all__:
+        for name in diag.__all__:
             self.assertIs(getattr(old_diagnostics, name), getattr(diag, name), name)
+        # Public names of the old single-module diagnostics.
+        for name in (
+            "describe_direct_devices",
+            "describe_line",
+            "direct_section",
+            "identify_device",
+            "open_problem",
+            "probe_direct_devices",
+            "run_direct_status",
+            "run_direct_test_print",
+            "run_listen",
+        ):
+            self.assertTrue(callable(getattr(old_diagnostics, name)), name)
         self.assertIs(old_diagnostics.build_report, diag.build_report)
         self.assertIs(old_diagnostics.main, diag.main)
 

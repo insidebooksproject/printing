@@ -3,7 +3,6 @@
 import argparse
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -146,7 +145,3 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print()
             print(describe_result(test_result, test_error))
     return exit_code
-
-
-if __name__ == "__main__":
-    sys.exit(main())

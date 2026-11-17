@@ -4,6 +4,7 @@
   ``check-printer/`` queue under it, label sidecars, :func:`save_for_retry`.
 * :mod:`.labels`: the per-user label journal (duplicate-purchase warnings).
 
-Nothing in the printing core (:mod:`ibp_printing.api`, the backends) depends
-on this; the intake stations' print server does not use it.
+No core module (:mod:`ibp_printing.api`, the backends, ``direct``, ``jobs``)
+imports this, and the intake stations' print server does not use it; the
+package's top-level ``__init__`` only re-exports its public names.
 """

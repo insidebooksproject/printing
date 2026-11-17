@@ -5,5 +5,6 @@
   ``Downloads/to-print/`` queue.
 * :mod:`.diag`: ``ibp-print-diag``, printer diagnostics and test prints.
 
-The library (``ibp_printing`` itself) never imports these.
+No library module imports these, except the ``ibp_printing.diagnostics``
+alias kept for shippy and shippy-gui.
 """
