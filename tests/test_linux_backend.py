@@ -1,6 +1,7 @@
 """LinuxPrinterBackend with ``lp``, CUPS and sysfs faked."""
 
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -190,6 +191,7 @@ def fake_sysfs(root: Path, devices: dict[str, tuple[str, str, str]]) -> None:
     (base / "1-1:1.0").mkdir()
 
 
+@unittest.skipIf(sys.platform == "win32", "sysfs entry names contain ':'")
 class LinuxDiscoveryTests(unittest.TestCase):
     """CUPS queues are matched to sysfs USB devices by their VID:PID suffix."""
 
