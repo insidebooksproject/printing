@@ -1,6 +1,6 @@
 """The watcher itself: folder events -> queue -> one worker that prints and files.
 
-Under the watch folder (names from :mod:`ibp_printing.paths`):
+Under the watch folder (names from :mod:`ibp_printing.shipping.paths`):
 
 * ``printed/``       - labels a printer accepted (outcome ``ok``).
 * ``to-print/``      - labels that definitely did not reach any printer. shippy
@@ -21,14 +21,14 @@ from typing import Any, Optional
 from watchdog.events import FileSystemEventHandler
 
 from ibp_printing.log import attempt, describe_exception, get_logger, log_event
-from ibp_printing.paths import (
+from ibp_printing.shipping.paths import (
     CHECK_PRINTER_DIR,
     PRINTED_DIR,
     TO_PRINT_DIR,
     is_sidecar,
 )
-from ibp_printing.watcher import messages
-from ibp_printing.watcher.core import (
+from ibp_printing.apps.watcher import messages
+from ibp_printing.apps.watcher.core import (
     MAX_DEFERRED_RETRIES,
     RETRY,
     FileOutcome,
@@ -37,7 +37,7 @@ from ibp_printing.watcher.core import (
     arrival_time,
     file_signature,
 )
-from ibp_printing.watcher.detect import (
+from ibp_printing.apps.watcher.detect import (
     RAW_PRINTER_SUFFIXES,
     classify_shape,
     download_in_progress,
@@ -45,8 +45,8 @@ from ibp_printing.watcher.detect import (
     matches_globs,
     peek_size,
 )
-from ibp_printing.watcher.state import FolderState, iso
-from ibp_printing.watcher.toprint import ToPrintQueue
+from ibp_printing.apps.watcher.state import FolderState, iso
+from ibp_printing.apps.watcher.toprint import ToPrintQueue
 
 logger = get_logger(__name__)
 

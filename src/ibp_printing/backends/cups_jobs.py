@@ -1,24 +1,28 @@
 """Following a CUPS job, for :func:`ibp_printing.jobs.track_job`.
 
-``track_job`` classifies Windows ``JOB_STATUS_*`` bits, so a CUPS job state
-(and the queue's state) is translated into those bits:
+Each poll maps the CUPS job state (and the queue's state) onto a
+:class:`~ibp_printing.models.JobState`:
 
-=====================  ================================  ====================
-CUPS job-state         bits                              track_job outcome
-=====================  ================================  ====================
-3 pending              none ("QUEUED")                   keeps waiting
-4 pending-held         PAUSED                            keeps waiting
-5 processing           PRINTING                          keeps waiting
-6 processing-stopped   ERROR                             ERROR after 10 s
-7 canceled             DELETED                           DELETED
-8 aborted              ERROR, then gone                  ERROR
-9 completed            PRINTED | COMPLETE                COMPLETED
-=====================  ================================  ====================
+=====================  ===========  =========================
+CUPS job-state         JobState     track_job outcome
+=====================  ===========  =========================
+3 pending              ACTIVE       keeps waiting
+4 pending-held         ACTIVE       keeps waiting
+5 processing           ACTIVE       keeps waiting
+6 processing-stopped   ERROR        ERROR after 10 s
+7 canceled             DELETED      DELETED
+8 aborted              ERROR        ERROR (then gone at once)
+9 completed            DONE         COMPLETED
+=====================  ===========  =========================
 
 A queue that CUPS has stopped (``printer-state`` 5, ``lpstat``: "disabled",
 which is what CUPS does by default when the printer fails, the job staying
-pending) also sets ERROR, so a stopped printer ends in ERROR after 10 s
-rather than waiting for the timeout.
+pending) also makes an unfinished job ERROR, so a stopped printer ends in
+ERROR after 10 s rather than waiting for the timeout.
+
+The snapshot's only flag is the CUPS job-state name, so a history entry is
+made when the job state (or JobState) changes, not on every change of
+``job-state-reasons``; the reasons and the printer's message are its text.
 
 With pycups the job is read with ``getJobAttributes``. Without it ``lpstat``
 is used: ``lpstat -o QUEUE`` lists the queue's unfinished jobs and
@@ -32,13 +36,7 @@ import re
 import subprocess
 from typing import Any, Callable, Optional
 
-from ibp_printing.models import JobSnapshot
-
-PAUSED = 0x00000001
-ERROR = 0x00000002
-PRINTING = 0x00000010
-DELETED = 0x00000100
-DONE = 0x00000080 | 0x00001000  # PRINTED | COMPLETE
+from ibp_printing.models import JobSnapshot, JobState
 
 JOB_STATE_NAMES = {
     3: "pending",
@@ -49,14 +47,14 @@ JOB_STATE_NAMES = {
     8: "aborted",
     9: "completed",
 }
-_JOB_STATE_BITS = {
-    3: 0,
-    4: PAUSED,
-    5: PRINTING,
-    6: ERROR,
-    7: DELETED,
-    8: ERROR,
-    9: DONE,
+_JOB_STATES = {
+    3: JobState.ACTIVE,
+    4: JobState.ACTIVE,
+    5: JobState.ACTIVE,
+    6: JobState.ERROR,
+    7: JobState.DELETED,
+    8: JobState.ERROR,
+    9: JobState.DONE,
 }
 JOB_ABORTED = 8
 PRINTER_STOPPED = 5
@@ -74,12 +72,13 @@ def job_id_from_lp(stdout: str) -> Optional[int]:
     return int(match.group(2)) if match else None
 
 
-def job_bits(job_state: int, printer_stopped: bool = False) -> int:
-    """The ``JOB_STATUS_*`` bits for a CUPS job state (see the module table)."""
-    bits = _JOB_STATE_BITS.get(job_state, 0)
-    if printer_stopped and job_state in (3, 4, 5):
-        bits |= ERROR
-    return bits
+def job_state(cups_state: int, printer_stopped: bool = False) -> JobState:
+    """The :class:`JobState` for a CUPS job state (see the module table)."""
+    state = _JOB_STATES.get(cups_state, JobState.ACTIVE)
+    # A stopped queue makes an unfinished job ERROR.
+    if printer_stopped and state is JobState.ACTIVE:
+        return JobState.ERROR
+    return state
 
 
 def _run_lpstat(args: list[str]) -> str:
@@ -120,9 +119,15 @@ class CupsJobPoller:  # pylint: disable=too-few-public-methods
             snapshot = self._poll_lpstat()
         return snapshot
 
-    def _snapshot(self, bits: int, text: str) -> JobSnapshot:
+    def _snapshot(
+        self, state: JobState, flags: tuple[str, ...], text: str = ""
+    ) -> JobSnapshot:
         return JobSnapshot(
-            job_id=self.job_id, document=self.job_name, status=bits, status_text=text
+            job_id=self.job_id,
+            document=self.job_name,
+            state=state,
+            flags=flags,
+            status_text=text,
         )
 
     def _poll_ipp(self) -> Optional[JobSnapshot]:
@@ -148,8 +153,8 @@ class CupsJobPoller:  # pylint: disable=too-few-public-methods
         reasons = job.get("job-state-reasons") or []
         if isinstance(reasons, str):
             reasons = [reasons]
-        parts = [JOB_STATE_NAMES.get(state, f"state {state}")]
-        parts += [str(reason) for reason in reasons if reason != "none"]
+        flag = JOB_STATE_NAMES.get(state, f"state {state}")
+        parts = [str(reason) for reason in reasons if reason != "none"]
         message = job.get("job-printer-state-message") or ""
         if stopped:
             message = message or printer.get("printer-state-message") or ""
@@ -158,7 +163,7 @@ class CupsJobPoller:  # pylint: disable=too-few-public-methods
             parts.append(str(message))
         if state == JOB_ABORTED:
             self._aborted_seen = True
-        return self._snapshot(job_bits(state, stopped), "; ".join(parts))
+        return self._snapshot(job_state(state, stopped), (flag,), "; ".join(parts))
 
     def _poll_lpstat(self) -> Optional[JobSnapshot]:
         request = f"{self.printer_name}-{self.job_id}"
@@ -169,11 +174,11 @@ class CupsJobPoller:  # pylint: disable=too-few-public-methods
         first, _, rest = status.partition("\n")
         if " disabled" in first:
             detail = rest.strip().splitlines()[0].strip() if rest.strip() else ""
-            text = "pending; printer disabled" + (f"; {detail}" if detail else "")
-            return self._snapshot(ERROR, text)
+            text = "printer disabled" + (f"; {detail}" if detail else "")
+            return self._snapshot(JobState.ERROR, ("pending",), text)
         if f"now printing {request}" in first:
-            return self._snapshot(PRINTING, "processing")
-        return self._snapshot(0, "pending")
+            return self._snapshot(JobState.ACTIVE, ("processing",))
+        return self._snapshot(JobState.ACTIVE, ("pending",))
 
 
 def _ipp_status(exc: BaseException) -> Optional[int]:

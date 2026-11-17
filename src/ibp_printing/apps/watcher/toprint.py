@@ -4,18 +4,18 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from ibp_printing import labels
+from ibp_printing.shipping import labels
 from ibp_printing.log import attempt, get_logger, log_event
-from ibp_printing.paths import PARTIAL_SUFFIX, is_sidecar, read_sidecar
-from ibp_printing.watcher import messages
-from ibp_printing.watcher.core import (
+from ibp_printing.shipping.paths import PARTIAL_SUFFIX, is_sidecar, read_sidecar
+from ibp_printing.apps.watcher import messages
+from ibp_printing.apps.watcher.core import (
     MAX_DEFERRED_RETRIES,
     FileOutcome,
     Submission,
     WatcherCore,
     file_signature,
 )
-from ibp_printing.watcher.detect import (
+from ibp_printing.apps.watcher.detect import (
     download_in_progress,
     is_temp_name,
     matches_globs,

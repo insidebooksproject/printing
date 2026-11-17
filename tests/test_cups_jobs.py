@@ -9,7 +9,7 @@ from printing_helpers import quiet_logging
 
 from ibp_printing.backends import cups_jobs, linux
 from ibp_printing.jobs import track_job
-from ibp_printing.models import JobOutcome, PrintResult
+from ibp_printing.models import JobOutcome, JobState, PrintResult
 
 QUEUE = "DYMO_LabelWriter_450_Turbo_0922:0021"
 
@@ -78,7 +78,7 @@ def poller(connection=None, run=None):
 
 
 class HelperTests(unittest.TestCase):
-    """job_id_from_lp and job_bits."""
+    """job_id_from_lp and job_state."""
 
     def test_job_id_from_lp(self):
         self.assertEqual(
@@ -88,9 +88,10 @@ class HelperTests(unittest.TestCase):
         self.assertIsNone(cups_jobs.job_id_from_lp(""))
 
     def test_stopped_printer_marks_unfinished_jobs_as_error(self):
-        self.assertEqual(cups_jobs.job_bits(3), 0)
-        self.assertEqual(cups_jobs.job_bits(3, printer_stopped=True), cups_jobs.ERROR)
-        self.assertEqual(cups_jobs.job_bits(9, printer_stopped=True), cups_jobs.DONE)
+        self.assertEqual(cups_jobs.job_state(3), JobState.ACTIVE)
+        self.assertEqual(cups_jobs.job_state(3, printer_stopped=True), JobState.ERROR)
+        self.assertEqual(cups_jobs.job_state(9, printer_stopped=True), JobState.DONE)
+        self.assertEqual(cups_jobs.job_state(7, printer_stopped=True), JobState.DELETED)
 
 
 class IppTrackingTests(unittest.TestCase):
@@ -103,9 +104,29 @@ class IppTrackingTests(unittest.TestCase):
         result = track(poller(FakeConnection([3, 5, 5, 9])))
         self.assertEqual(result.outcome, JobOutcome.COMPLETED)
         self.assertEqual(len(result.history), 3)
-        self.assertIn("QUEUED (pending)", result.history[0])
-        self.assertIn("PRINTING (processing)", result.history[1])
-        self.assertIn("PRINTED,COMPLETE (completed)", result.history[2])
+        self.assertEqual(
+            [entry.split(" ", 1)[1] for entry in result.history],
+            ["pending", "processing", "completed"],
+        )
+
+    def test_reasons_are_text_and_do_not_add_history_entries(self):
+        connection = FakeConnection([5, 5, 9], reasons=["job-printing"])
+        poll = poller(connection)
+        result = PrintResult(printer_name=QUEUE, job_name="IBP Label [abc]", job_id=12)
+        clock = Clock()
+        reasons = iter([["job-printing"], ["cups-waiting-for-job-completed"], []])
+        original = connection.getJobAttributes
+
+        def attributes(job_id, requested_attributes=None):
+            job = original(job_id, requested_attributes)
+            job["job-state-reasons"] = next(reasons)
+            return job
+
+        connection.getJobAttributes = attributes
+        track_job(result, poll, timeout_s=60, clock=clock, sleep=clock.sleep)
+        self.assertEqual(
+            result.history, ["+0.0s processing (job-printing)", "+1.0s completed"]
+        )
 
     def test_canceled(self):
         result = track(poller(FakeConnection([5, 7])))
@@ -162,7 +183,7 @@ class LpstatTrackingTests(unittest.TestCase):
         ]
         result = track(poller(run=self.runner(steps)))
         self.assertEqual(result.outcome, JobOutcome.COMPLETED)
-        self.assertIn("PRINTING", result.history[0])
+        self.assertIn("processing", result.history[0])
 
     def test_disabled_queue_is_error(self):
         job = f"{QUEUE}-12   ibp   4096   Thu 12 Nov 2026 10:00:00 AM CST\n"

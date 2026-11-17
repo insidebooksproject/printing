@@ -13,7 +13,7 @@ The safety rules every path follows:
 * Availability first: if the state file cannot be written the watcher still
   prints, but logs CRITICAL and tells the volunteer once.
 * A label's metadata sidecar (``<label>.png.json``) is never printed; it moves
-  with its label, and the label journal (:mod:`ibp_printing.labels`) is told
+  with its label, and the label journal (:mod:`ibp_printing.shipping.labels`) is told
   where the label went (best effort: the journal never blocks printing).
 """
 
@@ -31,14 +31,14 @@ from ibp_printing import api
 from ibp_printing.backends import PrintError
 from ibp_printing.log import describe_exception, get_logger, log_event
 from ibp_printing.models import Discovery, PrintResult
-from ibp_printing.paths import (
+from ibp_printing.shipping.paths import (
     CHECK_PRINTER_DIR,
     PRINTED_DIR,
     TO_PRINT_DIR,
 )
-from ibp_printing.watcher import messages
-from ibp_printing.watcher.config import WatcherConfig
-from ibp_printing.watcher.detect import (
+from ibp_printing.apps.watcher import messages
+from ibp_printing.apps.watcher.config import WatcherConfig
+from ibp_printing.apps.watcher.detect import (
     LoadedLabel,
     ShapeDecision,
     TransientReadError,
@@ -49,9 +49,9 @@ from ibp_printing.watcher.detect import (
     sha256_bytes,
     wait_until_stable,
 )
-from ibp_printing.watcher.notify import Notifier
-from ibp_printing.watcher.sidecars import carry_sidecar
-from ibp_printing.watcher.state import (
+from ibp_printing.apps.watcher.notify import Notifier
+from ibp_printing.apps.watcher.sidecars import carry_sidecar
+from ibp_printing.apps.watcher.state import (
     FILING,
     INTERRUPTED,
     PRINTED,

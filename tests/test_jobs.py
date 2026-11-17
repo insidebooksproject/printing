@@ -1,12 +1,17 @@
-"""Tests for the spooler job-tracking state machine."""
+"""Tests for the spooler job-tracking state machine.
+
+Jobs are scripted as Windows ``JOB_STATUS_*`` bits and turned into snapshots
+by the Windows backend's own mapping, so these also cover that mapping.
+"""
 
 import unittest
 from typing import Optional
 
 from printing_helpers import quiet_logging
 
+from ibp_printing.backends.windows import job_snapshot, job_state
 from ibp_printing.jobs import ERROR_GRACE_S, outcome_when_gone, track_job
-from ibp_printing.models import JobOutcome, JobSnapshot, PrintResult
+from ibp_printing.models import JobOutcome, JobSnapshot, JobState, PrintResult
 
 SPOOLING = 0x0008
 PRINTING = 0x0010
@@ -49,7 +54,7 @@ def run(
         status = script[0] if (repeat_last and len(script) == 1) else script.pop(0)
         if status is None:
             return None
-        return JobSnapshot(job_id=42, document="Label [abc]", status=status)
+        return job_snapshot({"JobId": 42, "pDocument": "Label [abc]", "Status": status})
 
     outcome = track_job(
         result,
@@ -106,10 +111,36 @@ class TrackJobTests(unittest.TestCase):
 
     def test_outcome_when_gone(self):
         self.assertEqual(outcome_when_gone(None), JobOutcome.VANISHED_UNSEEN)
-        self.assertEqual(outcome_when_gone(DELETING | ERROR), JobOutcome.DELETED)
-        self.assertEqual(outcome_when_gone(PAPEROUT), JobOutcome.ERROR)
-        self.assertEqual(outcome_when_gone(PRINTING), JobOutcome.COMPLETED)
-        self.assertEqual(outcome_when_gone(0), JobOutcome.COMPLETED)
+        self.assertEqual(outcome_when_gone(JobState.DELETED), JobOutcome.DELETED)
+        self.assertEqual(outcome_when_gone(JobState.ERROR), JobOutcome.ERROR)
+        self.assertEqual(outcome_when_gone(JobState.ACTIVE), JobOutcome.COMPLETED)
+        self.assertEqual(outcome_when_gone(JobState.DONE), JobOutcome.COMPLETED)
+
+    def test_windows_job_state_priority(self):
+        self.assertEqual(job_state(0), JobState.ACTIVE)
+        self.assertEqual(job_state(SPOOLING | PRINTING), JobState.ACTIVE)
+        self.assertEqual(job_state(PAPEROUT), JobState.ERROR)
+        self.assertEqual(job_state(DELETING | ERROR), JobState.DELETED)
+        self.assertEqual(job_state(PRINTED | ERROR), JobState.DONE)
+        self.assertEqual(job_state(COMPLETE | DELETING), JobState.DONE)
+
+    def test_error_then_deleted_and_gone_is_deleted(self):
+        outcome, _, _ = run([PRINTING, ERROR, DELETING | ERROR], timeout_s=600)
+        self.assertEqual(outcome, JobOutcome.DELETED)
+
+    def test_state_change_with_same_flags_is_recorded(self):
+        script = [
+            JobSnapshot(1, "Label [abc]", JobState.ACTIVE, ("pending",)),
+            JobSnapshot(1, "Label [abc]", JobState.ERROR, ("pending",), "stopped"),
+            None,
+        ]
+        result = PrintResult(printer_name="Q", job_name="Label [abc]")
+        fake = FakeTime()
+        outcome = track_job(
+            result, lambda: script.pop(0), 30.0, clock=fake.clock, sleep=fake.sleep
+        )
+        self.assertEqual(outcome, JobOutcome.ERROR)
+        self.assertEqual(result.history, ["+0.0s pending", "+0.5s pending (stopped)"])
 
     def test_error_must_persist_for_grace_period(self):
         outcome, _, fake = run([ERROR], repeat_last=True, timeout_s=600)

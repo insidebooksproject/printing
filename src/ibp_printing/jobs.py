@@ -1,7 +1,9 @@
 """Follow a spooled job until it leaves the queue, errors, or times out.
 
-``EndDoc`` returning only means the spooler accepted the job. Whether a label
-actually came out is only visible by watching the job's status afterwards.
+``EndDoc`` (or ``lp``) returning only means the spooler accepted the job.
+Whether a label actually came out is only visible by watching the job's
+status afterwards. The backends report that status as a :class:`JobSnapshot`
+whose :class:`JobState` is all this module looks at.
 """
 
 import logging
@@ -14,14 +16,7 @@ from ibp_printing.log import (
     get_logger,
     log_event,
 )
-from ibp_printing.models import JobOutcome, JobSnapshot, PrintResult
-from ibp_printing.winconst import (
-    JOB_STATUS_BITS,
-    JOB_STATUS_DELETED_MASK,
-    JOB_STATUS_DONE_MASK,
-    JOB_STATUS_ERROR_MASK,
-    decode_bits,
-)
+from ibp_printing.models import JobOutcome, JobSnapshot, JobState, PrintResult
 
 logger = get_logger(__name__)
 
@@ -46,7 +41,7 @@ def track_job(
         timeout_s: How long to wait before giving up (the job is left alone).
     """
     started = clock()
-    last_status: Optional[int] = None
+    last: Optional[JobSnapshot] = None
     error_since: Optional[float] = None
 
     while True:
@@ -54,21 +49,21 @@ def track_job(
         now = clock()
 
         if snapshot is None:
-            outcome = outcome_when_gone(last_status)
+            outcome = outcome_when_gone(None if last is None else last.state)
             break
 
         result.job_id = snapshot.job_id
-        if snapshot.status != last_status:
+        if last is None or (snapshot.state, snapshot.flags) != (last.state, last.flags):
             _record_change(result, snapshot, now - started)
-            last_status = snapshot.status
+        last = snapshot
 
-        if snapshot.status & JOB_STATUS_ERROR_MASK:
+        if snapshot.state is JobState.ERROR:
             error_since = now if error_since is None else error_since
         else:
             error_since = None
 
-        classified = classify_status(
-            snapshot.status,
+        classified = classify_state(
+            snapshot.state,
             error_for_s=None if error_since is None else now - error_since,
             elapsed_s=now - started,
             timeout_s=timeout_s,
@@ -106,23 +101,23 @@ def tracking_failed(result: PrintResult, exc: BaseException) -> None:
     )
 
 
-def outcome_when_gone(last_status: Optional[int]) -> JobOutcome:
-    """Classify a job that has left the queue, given the last status we saw.
+def outcome_when_gone(last_state: Optional[JobState]) -> JobOutcome:
+    """Classify a job that has left the queue, given the last state we saw.
 
     ``None`` means the job was never observed (it printed before the first poll
     or was never queued under the expected name).
     """
-    if last_status is None:
+    if last_state is None:
         return JobOutcome.VANISHED_UNSEEN
-    if last_status & JOB_STATUS_DELETED_MASK:
+    if last_state is JobState.DELETED:
         return JobOutcome.DELETED
-    if last_status & JOB_STATUS_ERROR_MASK:
+    if last_state is JobState.ERROR:
         return JobOutcome.ERROR
     return JobOutcome.COMPLETED
 
 
-def classify_status(
-    status: int,
+def classify_state(
+    state: JobState,
     *,
     error_for_s: Optional[float],
     elapsed_s: float,
@@ -131,14 +126,14 @@ def classify_status(
     """Return the final outcome for a job still in the queue, or None to keep waiting.
 
     Args:
-        status: The job's current ``JOB_STATUS_*`` bits.
+        state: The job's current state.
         error_for_s: How long the job has continuously been in an error state.
         elapsed_s: Time since tracking started.
         timeout_s: Give up after this long.
     """
-    if status & JOB_STATUS_DONE_MASK:
+    if state is JobState.DONE:
         return JobOutcome.COMPLETED
-    if status & JOB_STATUS_DELETED_MASK:
+    if state is JobState.DELETED:
         return JobOutcome.DELETED
     if error_for_s is not None and error_for_s >= ERROR_GRACE_S:
         return JobOutcome.ERROR
@@ -151,8 +146,8 @@ def _record_change(
     result: PrintResult, snapshot: JobSnapshot, elapsed_s: float
 ) -> None:
     """Append a status change to the result history and log it."""
-    flags = decode_bits(snapshot.status, JOB_STATUS_BITS)
-    entry = f"+{elapsed_s:.1f}s {','.join(flags) or 'QUEUED'}"
+    label = ",".join(snapshot.flags) or snapshot.state.name
+    entry = f"+{elapsed_s:.1f}s {label}"
     if snapshot.status_text:
         entry += f" ({snapshot.status_text})"
     result.history.append(entry)
@@ -162,7 +157,8 @@ def _record_change(
         "job status changed",
         printer=result.printer_name,
         job_id=snapshot.job_id,
-        status=flags,
+        state=snapshot.state.value,
+        status=list(snapshot.flags),
         status_text=snapshot.status_text,
         pages=f"{snapshot.pages_printed}/{snapshot.total_pages}",
         t=round(elapsed_s, 2),

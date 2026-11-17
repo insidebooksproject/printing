@@ -8,7 +8,11 @@ did not print, or goes to ``check-printer/`` when the printer queue reported a
 problem. Every step is logged so printer failures can be diagnosed later.
 """
 
-from ibp_printing.watcher.config import WatcherConfig, default_config_path, load_config
-from ibp_printing.watcher.service import LabelWatcher
+from ibp_printing.apps.watcher.config import (
+    WatcherConfig,
+    default_config_path,
+    load_config,
+)
+from ibp_printing.apps.watcher.service import LabelWatcher
 
 __all__ = ["LabelWatcher", "WatcherConfig", "default_config_path", "load_config"]

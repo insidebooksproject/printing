@@ -19,12 +19,12 @@ from unittest import mock
 
 import ibp_printing
 from ibp_printing.models import JobOutcome
-from ibp_printing.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
-from ibp_printing.watcher import __main__ as watcher_main
-from ibp_printing.watcher import core
-from ibp_printing.watcher.detect import sha256_bytes
-from ibp_printing.watcher.service import LabelWatcher
-from ibp_printing.watcher.state import FolderState, Reservation, StateFile
+from ibp_printing.shipping.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
+from ibp_printing.apps.watcher import __main__ as watcher_main
+from ibp_printing.apps.watcher import core
+from ibp_printing.apps.watcher.detect import sha256_bytes
+from ibp_printing.apps.watcher.service import LabelWatcher
+from ibp_printing.apps.watcher.state import FolderState, Reservation, StateFile
 
 from test_watcher import (  # pylint: disable=wrong-import-order
     FakeBackend,
@@ -119,7 +119,7 @@ class CrossPathDuplicateTests(Restartable):
         first.process_path(self.dir / "a.png")
         later, _ = self.fresh(duplicate_window_hours=24.0)
         later._now = lambda: time.time() + 25 * HOUR
-        with self.assertLogs("ibp_printing.watcher.core", logging.INFO) as logs:
+        with self.assertLogs("ibp_printing.apps.watcher.core", logging.INFO) as logs:
             later._save_state(clean=False)
         self.assertTrue(any("duplicate window over" in x for x in logs.output))
         self.assertNotIn(digest, self.saved())
@@ -184,7 +184,7 @@ class UncertainTests(Restartable):
         watcher.process_path(path)
         backend.outcome = JobOutcome.COMPLETED
         self.queue_label("Reprint-label.png", seed=22)
-        with self.assertLogs("ibp_printing.watcher.core", logging.WARNING) as logs:
+        with self.assertLogs("ibp_printing.apps.watcher.core", logging.WARNING) as logs:
             outcomes = watcher.retry_queue_once("test")
         self.assertEqual([o.status for o in outcomes], ["printed"])
         self.assertTrue(any("REPRINT: printing" in line for line in logs.output))
@@ -253,7 +253,7 @@ class FilingTests(Restartable):
         queued = self.queue_label("label.png", seed=31)
         digest = digest_of(queued)
         with mock.patch(
-            "ibp_printing.watcher.core.os.rename",
+            "ibp_printing.apps.watcher.core.os.rename",
             side_effect=PermissionError(13, "antivirus"),
         ):
             outcomes = first.retry_queue_once("test")
@@ -269,7 +269,7 @@ class FilingTests(Restartable):
         self.assertEqual(backend.attempts, 1)
 
         second, _ = self.fresh()  # restart: the in-memory state is gone
-        with self.assertLogs("ibp_printing.watcher.core", logging.INFO) as logs:
+        with self.assertLogs("ibp_printing.apps.watcher.core", logging.INFO) as logs:
             second.retry_queue_once("restart")
         self.assertFalse(queued.exists())
         self.assertEqual(len(list((self.dir / PRINTED_DIR).iterdir())), 1)
@@ -283,7 +283,7 @@ class FilingTests(Restartable):
         path = make_label(self.dir / "label.png", seed=32)
         digest = digest_of(path)
         with mock.patch(
-            "ibp_printing.watcher.core.os.rename",
+            "ibp_printing.apps.watcher.core.os.rename",
             side_effect=PermissionError(13, "in use"),
         ):
             watcher.process_path(path)
@@ -297,7 +297,7 @@ class FilingTests(Restartable):
         first, _ = self.fresh()
         path = make_label(self.dir / "label.png", seed=33)
         with mock.patch(
-            "ibp_printing.watcher.core.os.rename",
+            "ibp_printing.apps.watcher.core.os.rename",
             side_effect=PermissionError(13, "in use"),
         ):
             self.assertEqual(first.process_path(path).status, "check_printer")
@@ -425,7 +425,9 @@ class UnsavedStateTests(Restartable):
         watcher, notifier = self.make_watcher(
             state=StateFile(blocker / "watcher-state.json")
         )
-        with self.assertLogs("ibp_printing.watcher.core", logging.CRITICAL) as logs:
+        with self.assertLogs(
+            "ibp_printing.apps.watcher.core", logging.CRITICAL
+        ) as logs:
             first = watcher.process_path(make_label(self.dir / "a.png", seed=51))
             second = watcher.process_path(make_label(self.dir / "b.png", seed=52))
         self.assertEqual((first.status, second.status), ("printed", "printed"))
@@ -448,7 +450,7 @@ class UnsavedStateTests(Restartable):
             state=StateFile(blocker / "watcher-state.json")
         )
         refuse = mock.patch.object(notifier, "notify", return_value=False)
-        with refuse, self.assertLogs("ibp_printing.watcher.core", logging.WARNING):
+        with refuse, self.assertLogs("ibp_printing.apps.watcher.core", logging.WARNING):
             watcher._save_state(clean=False)
         self.assertFalse(watcher._state_notified)
         watcher._save_state(clean=False)
@@ -464,7 +466,7 @@ class CheckpointTests(Restartable):
         old = make_label(self.dir / "overnight.png", seed=61)
         yesterday = time.time() - 20 * HOUR
         with mock.patch(
-            "ibp_printing.watcher.service.arrival_time", lambda path: yesterday
+            "ibp_printing.apps.watcher.service.arrival_time", lambda path: yesterday
         ):
             self.assertTrue(watcher.enqueue(old, "startup catch-up", force=True))
         watcher.stop(timeout_s=0.1)  # the worker never ran
@@ -488,7 +490,9 @@ class CheckpointTests(Restartable):
             late.append(make_label(self.dir / "late.png", seed=62))
 
         watcher._observer.stop = stop_then_download
-        with self.assertLogs("ibp_printing.watcher.service", logging.WARNING) as logs:
+        with self.assertLogs(
+            "ibp_printing.apps.watcher.service", logging.WARNING
+        ) as logs:
             watcher.stop()
         self.assertTrue(any("final scan" in line for line in logs.output))
         folder = StateFile(self.state_path).load(self.dir).folder
@@ -532,8 +536,8 @@ class NotifyOnceTests(TempDirTest):
     def test_unavailable_boxes_are_logged_once(self) -> None:
         watcher, notifier = self.make_watcher()
         notifier._custom = False
-        with mock.patch("ibp_printing.watcher.notify.sys.platform", "linux"):
-            with self.assertLogs("ibp_printing.watcher.core", logging.WARNING):
+        with mock.patch("ibp_printing.apps.watcher.notify.sys.platform", "linux"):
+            with self.assertLogs("ibp_printing.apps.watcher.core", logging.WARNING):
                 watcher._notify_once(self.dir / "a.png", "kind", "text")
         self.assertEqual(len(watcher._notified), 1)
 
@@ -616,7 +620,7 @@ class AppQueueTests(TempDirTest):
         with mock.patch.object(
             watcher_main, "to_print_dir", lambda: self.dir / "dl" / TO_PRINT_DIR
         ):
-            with self.assertLogs("ibp_printing.watcher", logging.WARNING):
+            with self.assertLogs("ibp_printing.apps.watcher", logging.WARNING):
                 dirs = watcher_main.to_print_dirs(watch)
         self.assertEqual(
             dirs,
@@ -663,7 +667,7 @@ class BoundTests(Restartable):
                 "p-new": Reservation("printed", now - 5, now - 5, completed=now),
                 "f": Reservation("filing", 0.5, 0.5),
             }
-            with self.assertLogs("ibp_printing.watcher.core", logging.WARNING):
+            with self.assertLogs("ibp_printing.apps.watcher.core", logging.WARNING):
                 watcher._prune_reservations()
         self.assertEqual(sorted(watcher._reservations), ["f", "p-new", "u-old"])
 
