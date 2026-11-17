@@ -446,9 +446,10 @@ See [docs/watcher.md](docs/watcher.md).
 `ibp-print-server` runs on the intake stations (Linux): the IBP frontend posts
 each request label PNG to `http://localhost:40121/print-image` and the server
 prints it on the station's USB label printer through this library. Install it
-with `uv tool install "ibp-printing[linux] @ git+https://github.com/jonkensta/ibp-printing"`
+with `uv tool install "ibp-printing[linux] @ git+https://github.com/jonkensta/ibp-printing@deploy"`
 and run it from [`packaging/linux/ibp-print-server.service`](packaging/linux/ibp-print-server.service).
-HTTP contract, label sizing, setup and logs: [docs/print-server.md](docs/print-server.md).
+It upgrades itself from the `deploy` branch on every start.
+HTTP contract, label sizing, setup, releasing and logs: [docs/print-server.md](docs/print-server.md).
 
 ## Development
 

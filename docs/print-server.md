@@ -69,7 +69,7 @@ As the `ibp` user:
 
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install "ibp-printing[linux] @ git+https://github.com/jonkensta/ibp-printing"
+uv tool install "ibp-printing[linux] @ git+https://github.com/jonkensta/ibp-printing@deploy"
 ```
 
 Name the CUPS queue after the printer's USB `VID:PID` (`lsusb`) and set its
@@ -92,9 +92,28 @@ sudo systemctl enable --now ibp-print-server
 curl -s localhost:40121/health
 ```
 
-Every start or restart runs `uv tool upgrade ibp-printing` first, so
-`sudo systemctl restart ibp-print-server` deploys the latest `main`. If the
-upgrade fails (no network), the installed version starts anyway.
+Every start or restart, including a reboot, runs `uv tool upgrade
+ibp-printing` first, so the station picks up the latest `deploy` branch. If
+the upgrade fails (no network), the installed version starts anyway.
+
+**Releasing:** `main` and `deploy` stay at the same tip. Merge into `main`,
+then release by fast-forwarding `deploy` to it; stations get it on their next
+start:
+
+```sh
+git fetch origin && git push origin origin/main:deploy
+```
+
+Roll back by pushing an older commit to `deploy` (`git push --force-with-lease
+origin <sha>:deploy`) and restarting.
+
+**Moving an older install to `deploy`:** stations installed before 2026-11-17
+track `main`. Switch one over as the `ibp` user, then restart:
+
+```sh
+uv tool install --force "ibp-printing[linux] @ git+https://github.com/jonkensta/ibp-printing@deploy"
+sudo systemctl restart ibp-print-server
+```
 
 **Moving from the old `print-server`:** stop it first, since both use port
 40121.
