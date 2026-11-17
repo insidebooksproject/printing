@@ -16,7 +16,7 @@ from unittest import mock
 
 import ibp_printing
 from ibp_printing.models import JobOutcome
-from ibp_printing.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
+from ibp_printing.shipping.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
 from ibp_printing.watcher import service
 from ibp_printing.watcher.detect import (
     TransientReadError,

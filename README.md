@@ -269,7 +269,7 @@ to check the printer before reprinting. Never refund or resend automatically;
 When a label can't print, shippy and shippy-gui save it into
 `Downloads\to-print\` and the [label watcher](#label-watcher) prints it later.
 Volunteers then often enter the same shipment again and buy postage a second
-time. `ibp_printing.labels` (everything is also importable from
+time. `ibp_printing.shipping.labels` (everything is also importable from
 `ibp_printing`) keeps a shared, per-user record of recent labels so the apps
 can warn first:
 

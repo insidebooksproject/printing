@@ -12,7 +12,7 @@ from ibp_printing.api import (
     set_direct_enabled,
 )
 from ibp_printing.backends import PrinterBackend, PrintError
-from ibp_printing.labels import (
+from ibp_printing.shipping.labels import (
     LabelRecord,
     LabelStatus,
     find_duplicates,
@@ -22,7 +22,7 @@ from ibp_printing.labels import (
     update_status,
 )
 from ibp_printing.log import configure_logging, default_log_dir, log_file_names, quiet
-from ibp_printing.paths import downloads_dir, save_for_retry, to_print_dir
+from ibp_printing.shipping.paths import downloads_dir, save_for_retry, to_print_dir
 from ibp_printing.models import (
     Discovery,
     JobOutcome,

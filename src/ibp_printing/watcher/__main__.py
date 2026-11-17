@@ -21,7 +21,7 @@ from ibp_printing.log import (
     install_exception_hooks,
     log_event,
 )
-from ibp_printing.paths import TO_PRINT_DIR, downloads_dir, to_print_dir
+from ibp_printing.shipping.paths import TO_PRINT_DIR, downloads_dir, to_print_dir
 from ibp_printing.watcher.config import WatcherConfig, load_config
 from ibp_printing.watcher.instance import SingleInstance
 from ibp_printing.watcher.notify import MB_ICONERROR, MB_SETFOREGROUND, message_box

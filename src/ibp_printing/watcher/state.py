@@ -40,8 +40,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ibp_printing.log import describe_exception, get_logger, log_event
-from ibp_printing.paths import (  # pylint: disable=unused-import
-    default_state_dir,  # re-exported: it moved to ibp_printing.paths
+from ibp_printing.shipping.paths import (  # pylint: disable=unused-import
+    default_state_dir,  # re-exported: it moved to ibp_printing.shipping.paths
 )
 
 logger = get_logger(__name__)

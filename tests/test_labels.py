@@ -1,4 +1,4 @@
-"""Tests for the label journal (ibp_printing.labels) and label sidecars."""
+"""Tests for the label journal (ibp_printing.shipping.labels) and label sidecars."""
 
 # pylint: disable=missing-function-docstring,protected-access
 
@@ -17,9 +17,9 @@ from unittest import mock
 from PIL import Image
 
 import ibp_printing
-from ibp_printing import labels, paths
+from ibp_printing.shipping import labels, paths
 from ibp_printing.log import configure_logging
-from ibp_printing.labels import (
+from ibp_printing.shipping.labels import (
     CHECK_PRINTER,
     PRINTED,
     PURCHASED,
@@ -262,9 +262,9 @@ class RecordAndUpdateTests(JournalTest):
         )
 
     def test_bad_status_and_missing_tracking_are_ignored(self) -> None:
-        with self.assertLogs("ibp_printing.labels", logging.ERROR):
+        with self.assertLogs("ibp_printing.shipping.labels", logging.ERROR):
             update_status("TRK1", "lost")
-        with self.assertLogs("ibp_printing.labels", logging.ERROR):
+        with self.assertLogs("ibp_printing.shipping.labels", logging.ERROR):
             update_status("", PRINTED)
         self.assertFalse(self.journal.exists())
 
@@ -272,15 +272,15 @@ class RecordAndUpdateTests(JournalTest):
         blocker = self.dir / "not-a-folder"
         blocker.write_text("x")
         labels.set_journal_path(blocker / "labels.jsonl")
-        with self.assertLogs("ibp_printing.labels", logging.ERROR):
+        with self.assertLogs("ibp_printing.shipping.labels", logging.ERROR):
             record = buy("TRK1")
         self.assertEqual(record.tracking_code, "TRK1")
-        with self.assertLogs("ibp_printing.labels", logging.ERROR):
+        with self.assertLogs("ibp_printing.shipping.labels", logging.ERROR):
             update_status("TRK1", PRINTED)
-        with self.assertLogs("ibp_printing.labels", logging.WARNING) as logs:
+        with self.assertLogs("ibp_printing.shipping.labels", logging.WARNING) as logs:
             self.assertEqual(find_duplicates(KEY), [])
         self.assertTrue(any("unavailable" in line for line in logs.output))
-        with self.assertLogs("ibp_printing.labels", logging.ERROR):
+        with self.assertLogs("ibp_printing.shipping.labels", logging.ERROR):
             self.assertEqual(pending_labels(), [])
 
     def test_lock_timeout_degrades(self) -> None:
@@ -294,9 +294,9 @@ class RecordAndUpdateTests(JournalTest):
             self.assertTrue(holding.wait(60), "child never took the lock")
             with mock.patch.object(labels, "LOCK_TIMEOUT_S", 0.2):
                 started = time.monotonic()
-                with self.assertLogs("ibp_printing.labels", logging.ERROR):
+                with self.assertLogs("ibp_printing.shipping.labels", logging.ERROR):
                     self.assertEqual(find_duplicates(KEY), [])
-                with self.assertLogs("ibp_printing.labels", logging.ERROR):
+                with self.assertLogs("ibp_printing.shipping.labels", logging.ERROR):
                     buy("TRK1")
                 self.assertLess(time.monotonic() - started, 5)
         finally:
@@ -346,7 +346,7 @@ class CorruptionTests(JournalTest):
             handle.write("not json\n[1, 2]\n{}\n")
             handle.write('{"tracking_code": "X", "status": "weird", "created": 1}\n')
         buy("TRK2")
-        with self.assertLogs("ibp_printing.labels", logging.WARNING) as logs:
+        with self.assertLogs("ibp_printing.shipping.labels", logging.WARNING) as logs:
             latest = labels._read_all()
         self.assertEqual(sorted(latest), ["TRK1", "TRK2"])
         self.assertTrue(any("corrupt" in line for line in logs.output))
@@ -356,14 +356,14 @@ class CorruptionTests(JournalTest):
         with open(self.journal, "a", encoding="utf-8") as handle:
             handle.write('{"tracking_code": "TORN", "sta')
         buy("TRK2")
-        with self.assertLogs("ibp_printing.labels", logging.WARNING):
+        with self.assertLogs("ibp_printing.shipping.labels", logging.WARNING):
             self.assertEqual(sorted(labels._read_all()), ["TRK1", "TRK2"])
 
     def test_write_after_corruption_compacts(self) -> None:
         buy("TRK1")
         with open(self.journal, "a", encoding="utf-8") as handle:
             handle.write("garbage\n")
-        with self.assertLogs("ibp_printing.labels", logging.WARNING):
+        with self.assertLogs("ibp_printing.shipping.labels", logging.WARNING):
             update_status("TRK1", PRINTED)
         self.assertNotIn("garbage", self.journal.read_text(encoding="utf-8"))
         self.assertEqual(labels._read_all()["TRK1"].status, PRINTED)
@@ -523,14 +523,14 @@ class PendingLabelsTests(JournalTest):
         paths.write_sidecar(png, {"tracking_code": "R1"})
         buy("R1")
         update_status("R1", REFUNDED)
-        with self.assertLogs("ibp_printing.labels", logging.WARNING):
+        with self.assertLogs("ibp_printing.shipping.labels", logging.WARNING):
             (record,) = pending_labels()
         self.assertEqual(record.status, REFUNDED)
 
     def test_journal_failure_still_lists_the_folder(self) -> None:
         self.make_file("20261004-101500_X.png")
         with mock.patch.object(labels, "_read_all", side_effect=OSError("boom")):
-            with self.assertLogs("ibp_printing.labels", logging.ERROR):
+            with self.assertLogs("ibp_printing.shipping.labels", logging.ERROR):
                 (record,) = pending_labels()
         self.assertEqual(record.tracking_code, "X")
 
@@ -584,7 +584,7 @@ class SaveForRetryTests(JournalTest):
 
     def test_sidecar_failure_still_saves_label(self) -> None:
         with mock.patch.object(paths, "write_sidecar", side_effect=OSError("full")):
-            with self.assertLogs("ibp_printing.paths", logging.ERROR):
+            with self.assertLogs("ibp_printing.shipping.paths", logging.ERROR):
                 path = ibp_printing.save_for_retry(
                     self.image(), "X", watch_dir=self.downloads, meta=self.META
                 )
@@ -593,7 +593,7 @@ class SaveForRetryTests(JournalTest):
     def test_corrupt_sidecar_reads_as_none(self) -> None:
         png = self.make_file("a.png")
         paths.sidecar_path(png).write_text("{broken", encoding="utf-8")
-        with self.assertLogs("ibp_printing.paths", logging.WARNING):
+        with self.assertLogs("ibp_printing.shipping.paths", logging.WARNING):
             self.assertIsNone(paths.read_sidecar(png))
         self.assertIsNone(paths.read_sidecar(self.to_print / "missing.png"))
 

@@ -1,6 +1,6 @@
 """The watcher itself: folder events -> queue -> one worker that prints and files.
 
-Under the watch folder (names from :mod:`ibp_printing.paths`):
+Under the watch folder (names from :mod:`ibp_printing.shipping.paths`):
 
 * ``printed/``       - labels a printer accepted (outcome ``ok``).
 * ``to-print/``      - labels that definitely did not reach any printer. shippy
@@ -21,7 +21,7 @@ from typing import Any, Optional
 from watchdog.events import FileSystemEventHandler
 
 from ibp_printing.log import attempt, describe_exception, get_logger, log_event
-from ibp_printing.paths import (
+from ibp_printing.shipping.paths import (
     CHECK_PRINTER_DIR,
     PRINTED_DIR,
     TO_PRINT_DIR,

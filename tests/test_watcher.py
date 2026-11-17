@@ -48,7 +48,7 @@ from ibp_printing.watcher.detect import (
     sha256_file,
     wait_until_stable,
 )
-from ibp_printing.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
+from ibp_printing.shipping.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
 from ibp_printing.watcher.instance import SingleInstance
 from ibp_printing.watcher.notify import Notifier
 from ibp_printing.watcher.service import LabelWatcher

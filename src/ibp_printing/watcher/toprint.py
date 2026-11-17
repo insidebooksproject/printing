@@ -4,9 +4,9 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from ibp_printing import labels
+from ibp_printing.shipping import labels
 from ibp_printing.log import attempt, get_logger, log_event
-from ibp_printing.paths import PARTIAL_SUFFIX, is_sidecar, read_sidecar
+from ibp_printing.shipping.paths import PARTIAL_SUFFIX, is_sidecar, read_sidecar
 from ibp_printing.watcher import messages
 from ibp_printing.watcher.core import (
     MAX_DEFERRED_RETRIES,
