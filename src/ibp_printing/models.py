@@ -342,13 +342,38 @@ class JobOutcome(str, Enum):
         }
 
 
+class JobState(str, Enum):
+    """Where a queued job stands, as far as following it is concerned.
+
+    Each backend maps its own job status onto this (Windows ``JOB_STATUS_*``
+    bits, CUPS ``job-state``); :func:`ibp_printing.jobs.track_job` only ever
+    looks at the state.
+    """
+
+    # Still in the queue with nothing wrong: queued, spooling, held or printing.
+    ACTIVE = "active"
+    # Stuck (paper out, offline, a stopped CUPS queue, ...): it may recover.
+    ERROR = "error"
+    # Being deleted or cancelled.
+    DELETED = "deleted"
+    # The spooler says it printed.
+    DONE = "done"
+
+
 @dataclass(frozen=True)
 class JobSnapshot:
-    """One observation of a job in the spooler queue."""
+    """One observation of a job in the spooler queue.
+
+    ``flags`` are the platform's own names for the job's status (``SPOOLING``,
+    ``PAPEROUT``, ... on Windows; the CUPS ``job-state`` and reasons on Linux),
+    recorded in the result history and logs. A new history entry is made
+    whenever ``state`` or ``flags`` change.
+    """
 
     job_id: int
     document: str
-    status: int
+    state: JobState
+    flags: tuple[str, ...] = ()
     status_text: str = ""
     pages_printed: int = 0
     total_pages: int = 0
