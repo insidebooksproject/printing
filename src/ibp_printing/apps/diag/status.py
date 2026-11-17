@@ -5,7 +5,7 @@ import logging
 from typing import Optional, Sequence
 
 from ibp_printing.api import get_backend
-from ibp_printing.diagnostics.report import (
+from ibp_printing.apps.diag.report import (
     describe_direct_devices,
     direct_device_data,
 )

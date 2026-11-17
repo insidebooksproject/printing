@@ -27,8 +27,8 @@ from ibp_printing.shipping.paths import (
     TO_PRINT_DIR,
     is_sidecar,
 )
-from ibp_printing.watcher import messages
-from ibp_printing.watcher.core import (
+from ibp_printing.apps.watcher import messages
+from ibp_printing.apps.watcher.core import (
     MAX_DEFERRED_RETRIES,
     RETRY,
     FileOutcome,
@@ -37,7 +37,7 @@ from ibp_printing.watcher.core import (
     arrival_time,
     file_signature,
 )
-from ibp_printing.watcher.detect import (
+from ibp_printing.apps.watcher.detect import (
     RAW_PRINTER_SUFFIXES,
     classify_shape,
     download_in_progress,
@@ -45,8 +45,8 @@ from ibp_printing.watcher.detect import (
     matches_globs,
     peek_size,
 )
-from ibp_printing.watcher.state import FolderState, iso
-from ibp_printing.watcher.toprint import ToPrintQueue
+from ibp_printing.apps.watcher.state import FolderState, iso
+from ibp_printing.apps.watcher.toprint import ToPrintQueue
 
 logger = get_logger(__name__)
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from printing_helpers import FakeBackend, PrintError, dymo, quiet_logging, reset_logging
 
 import ibp_printing
-from ibp_printing.diagnostics import (
+from ibp_printing.apps.diag import (
     LABEL_SIZE,
     build_report,
     describe_result,

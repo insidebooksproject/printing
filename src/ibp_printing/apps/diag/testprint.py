@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from ibp_printing.api import print_image, print_to_first_available
 from ibp_printing.backends import PrintError
-from ibp_printing.diagnostics.status import direct_layer
+from ibp_printing.apps.diag.status import direct_layer
 from ibp_printing.discovery import direct_candidates, is_direct_name
 from ibp_printing.log import describe_exception, get_logger, log_event
 from ibp_printing.models import JobOutcome, PrinterCandidate, PrintResult

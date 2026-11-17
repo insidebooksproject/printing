@@ -317,7 +317,7 @@ schtasks /Delete /TN "IBP Label Watcher" /F
 If the watcher is already running when the task fires, the second copy logs
 "another watcher already holds the lock" and exits with code 1. That's harmless.
 
-You can also run it as `pythonw -m ibp_printing.watcher` from any environment
+You can also run it as `pythonw -m ibp_printing.apps.watcher` from any environment
 where `ibp-printing[watcher]` is installed.
 
 ## Command-line options

@@ -13,8 +13,8 @@ import ibp_printing
 from ibp_printing.shipping import labels, paths
 from ibp_printing.models import JobOutcome
 from ibp_printing.shipping.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
-from ibp_printing.watcher import messages, notify
-from ibp_printing.watcher.notify import Notifier
+from ibp_printing.apps.watcher import messages, notify
+from ibp_printing.apps.watcher.notify import Notifier
 
 from test_watcher import (  # pylint: disable=wrong-import-order
     FakeBackend,

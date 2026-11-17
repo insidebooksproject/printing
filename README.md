@@ -392,7 +392,7 @@ The test label is 1200x1800 px (4x6 in at 300 DPI) with a border, corner
 labels, and a half-inch ruler grid, so you can see scaling, cropping, or
 rotation on the printed label.
 
-From Python, `ibp_printing.diagnostics.build_report(discovery, events)` returns
+From Python, `ibp_printing.apps.diag.build_report(discovery, events)` returns
 the same report as a string.
 
 > The PrintService *Operational* event channel is off by default. Turn it on
@@ -451,6 +451,17 @@ and run it from [`packaging/linux/ibp-print-server.service`](packaging/linux/ibp
 HTTP contract, label sizing, setup and logs: [docs/print-server.md](docs/print-server.md).
 
 ## Development
+
+Package layout (`src/ibp_printing/`):
+
+| Part | Modules | What |
+|---|---|---|
+| Printing core | `api`, `backends/`, `direct/`, `discovery`, `jobs`, `render`, `models`, `log`, `winconst` | find printers, print an image, follow the job; no app imports it from here down |
+| Shipping workflow | `shipping/` (`paths`, `labels`) | `Downloads/to-print/` queue, label sidecars, the label journal (shippy, shippy-gui, the watcher) |
+| Apps | `apps/server`, `apps/watcher/`, `apps/diag/` | `ibp-print-server`, `ibp-label-watcher(w)`, `ibp-print-diag` |
+
+`ibp_printing.labels` and `ibp_printing.diagnostics` are thin aliases of their
+new homes, kept because shippy and shippy-gui import them.
 
 ```sh
 uv sync --extra watcher --dev

@@ -15,7 +15,8 @@ from PIL import Image
 from printing_helpers import FakeBackend, PrintError, dymo, quiet_logging
 
 import ibp_printing
-from ibp_printing import PrintQueue, server
+from ibp_printing import PrintQueue
+from ibp_printing.apps import server
 from ibp_printing.models import JobOutcome, PrintResult
 
 LABEL = "iDPRT_SP310_0a5f:0001"
@@ -178,7 +179,7 @@ class PrintImageTests(ServerTestCase):
     def test_jobs_are_tracked_and_failed_outcomes_logged(self):
         backend = self.label_printer(outcomes={LABEL: JobOutcome.ERROR})
         self.start(backend)
-        with self.assertLogs("ibp_printing.server", level="ERROR") as logs:
+        with self.assertLogs("ibp_printing.apps.server", level="ERROR") as logs:
             self.assertEqual(self.post(png())[0], 200)
             backend.wait_for(1)
             deadline = time.monotonic() + 5
@@ -330,9 +331,7 @@ class CliTests(unittest.TestCase):
         }
         for argv, expected in cases.items():
             with self.subTest(argv=argv):
-                with mock.patch.object(
-                    server.diagnostics, "main", return_value=0
-                ) as diag:
+                with mock.patch.object(server.diag, "main", return_value=0) as diag:
                     self.assertEqual(server.main(list(argv)), 0)
                 diag.assert_called_once_with(expected)
 

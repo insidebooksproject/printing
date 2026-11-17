@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from ibp_printing.api import discover, get_backend
-from ibp_printing.diagnostics.listen import run_listen
-from ibp_printing.diagnostics.report import LOG_APP, build_report, report_data
-from ibp_printing.diagnostics.status import probe_direct_devices, run_direct_status
-from ibp_printing.diagnostics.testprint import (
+from ibp_printing.apps.diag.listen import run_listen
+from ibp_printing.apps.diag.report import LOG_APP, build_report, report_data
+from ibp_printing.apps.diag.status import probe_direct_devices, run_direct_status
+from ibp_printing.apps.diag.testprint import (
     describe_result,
     result_data,
     run_test_print,

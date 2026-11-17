@@ -31,15 +31,15 @@ from ibp_printing.models import (
     PrintQueue,
     PrintResult,
 )
-from ibp_printing.watcher import __main__ as watcher_main
-from ibp_printing.watcher import notify
-from ibp_printing.watcher.config import (
+from ibp_printing.apps.watcher import __main__ as watcher_main
+from ibp_printing.apps.watcher import notify
+from ibp_printing.apps.watcher.config import (
     WatcherConfig,
     config_from_mapping,
     default_config_path,
     load_config,
 )
-from ibp_printing.watcher.detect import (
+from ibp_printing.apps.watcher.detect import (
     UnsupportedFormat,
     classify_shape,
     is_temp_name,
@@ -49,10 +49,10 @@ from ibp_printing.watcher.detect import (
     wait_until_stable,
 )
 from ibp_printing.shipping.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
-from ibp_printing.watcher.instance import SingleInstance
-from ibp_printing.watcher.notify import Notifier
-from ibp_printing.watcher.service import LabelWatcher
-from ibp_printing.watcher.state import StateFile
+from ibp_printing.apps.watcher.instance import SingleInstance
+from ibp_printing.apps.watcher.notify import Notifier
+from ibp_printing.apps.watcher.service import LabelWatcher
+from ibp_printing.apps.watcher.state import StateFile
 
 _LOG_DIR = tempfile.mkdtemp(prefix="ibp-watcher-test-logs-")
 
@@ -488,7 +488,7 @@ class ProcessingTests(TempDirTest):
         )
         watcher, notifier = self.make_watcher()
         with mock.patch(
-            "ibp_printing.watcher.core.api.print_to_first_available",
+            "ibp_printing.apps.watcher.core.api.print_to_first_available",
             side_effect=error,
         ):
             outcome = watcher.process_path(make_label(self.dir / "label.png"))
@@ -503,7 +503,7 @@ class ProcessingTests(TempDirTest):
 
     def test_retry_message_names_the_action(self) -> None:
         # pylint: disable=import-outside-toplevel
-        from ibp_printing.watcher import messages
+        from ibp_printing.apps.watcher import messages
 
         text = messages.retry_failed(Path("x.png"), "no answer", "no_cover_reply")
         self.assertIn("turn it on again", text)
@@ -515,7 +515,7 @@ class ProcessingTests(TempDirTest):
         watcher._sleep = lambda seconds: None
         path = make_label(self.dir / "label.png")
         with mock.patch(
-            "ibp_printing.watcher.core.os.rename",
+            "ibp_printing.apps.watcher.core.os.rename",
             side_effect=PermissionError(13, "in use"),
         ):
             outcome = watcher.process_path(path)
@@ -553,7 +553,7 @@ class ProcessingTests(TempDirTest):
         shutil.copy(self.dir / "label.png", self.dir / "label (1).png")
         shutil.copy(self.dir / "label.png", self.dir / "REPRINT label.png")
         self.assertEqual(watcher.process_path(self.dir / "label.png").status, "printed")
-        with self.assertLogs("ibp_printing.watcher", logging.WARNING) as logs:
+        with self.assertLogs("ibp_printing.apps.watcher", logging.WARNING) as logs:
             dup = watcher.process_path(self.dir / "label (1).png")
         self.assertEqual(dup.status, "duplicate")
         self.assertTrue(any("DUPLICATE not printed" in line for line in logs.output))
@@ -629,7 +629,7 @@ class ProcessingTests(TempDirTest):
         watcher._sleep = lambda seconds: None
         path = make_label(self.dir / "label.png")
         with mock.patch(
-            "ibp_printing.watcher.core.os.rename",
+            "ibp_printing.apps.watcher.core.os.rename",
             side_effect=PermissionError(13, "in use"),
         ) as rename:
             outcome = watcher.process_path(path)
@@ -657,7 +657,7 @@ class ProcessingTests(TempDirTest):
                 raise PermissionError(13, "in use")
             real_rename(src, dst)
 
-        with mock.patch("ibp_printing.watcher.core.os.rename", side_effect=flaky):
+        with mock.patch("ibp_printing.apps.watcher.core.os.rename", side_effect=flaky):
             outcome = watcher.process_path(make_label(self.dir / "label.png"))
         assert outcome.moved_to is not None
         self.assertTrue(outcome.moved_to.exists())

@@ -8,8 +8,8 @@ import time
 from collections import Counter
 from typing import Any, Callable, Iterator, Optional
 
-from ibp_printing.diagnostics.report import busy_text, describe_direct_devices
-from ibp_printing.diagnostics.status import (
+from ibp_printing.apps.diag.report import busy_text, describe_direct_devices
+from ibp_printing.apps.diag.status import (
     candidates_by_path,
     direct_layer,
     direct_off,

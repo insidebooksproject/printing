@@ -22,8 +22,8 @@ from test_direct_backend import (
 
 import ibp_printing
 from ibp_printing import PrintQueue
-from ibp_printing.diagnostics import listen
-from ibp_printing.diagnostics import EXIT_DIRECT_NOT_SENT, build_report, main
+from ibp_printing.apps.diag import listen
+from ibp_printing.apps.diag import EXIT_DIRECT_NOT_SENT, build_report, main
 from ibp_printing.direct import config as direct_config
 from ibp_printing.direct.transport import (
     DeviceUnavailable,

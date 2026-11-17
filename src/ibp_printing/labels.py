@@ -3,26 +3,6 @@
 Everything here is also importable from ``ibp_printing`` itself.
 """
 
-from ibp_printing.shipping.labels import (
-    LabelRecord,
-    LabelStatus,
-    find_duplicates,
-    journal_path,
-    pending_labels,
-    recipient_key,
-    record_purchase,
-    set_journal_path,
-    update_status,
-)
-
-__all__ = [
-    "LabelRecord",
-    "LabelStatus",
-    "find_duplicates",
-    "journal_path",
-    "pending_labels",
-    "recipient_key",
-    "record_purchase",
-    "set_journal_path",
-    "update_status",
-]
+# pylint: disable-next=wildcard-import,unused-wildcard-import
+from ibp_printing.shipping.labels import *  # noqa: F403
+from ibp_printing.shipping.labels import __all__

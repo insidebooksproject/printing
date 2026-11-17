@@ -36,9 +36,9 @@ from ibp_printing.shipping.paths import (
     PRINTED_DIR,
     TO_PRINT_DIR,
 )
-from ibp_printing.watcher import messages
-from ibp_printing.watcher.config import WatcherConfig
-from ibp_printing.watcher.detect import (
+from ibp_printing.apps.watcher import messages
+from ibp_printing.apps.watcher.config import WatcherConfig
+from ibp_printing.apps.watcher.detect import (
     LoadedLabel,
     ShapeDecision,
     TransientReadError,
@@ -49,9 +49,9 @@ from ibp_printing.watcher.detect import (
     sha256_bytes,
     wait_until_stable,
 )
-from ibp_printing.watcher.notify import Notifier
-from ibp_printing.watcher.sidecars import carry_sidecar
-from ibp_printing.watcher.state import (
+from ibp_printing.apps.watcher.notify import Notifier
+from ibp_printing.apps.watcher.sidecars import carry_sidecar
+from ibp_printing.apps.watcher.state import (
     FILING,
     INTERRUPTED,
     PRINTED,

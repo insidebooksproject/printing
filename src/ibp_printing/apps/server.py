@@ -44,7 +44,7 @@ from urllib.parse import urlsplit
 
 from PIL import Image
 
-from ibp_printing import diagnostics
+from ibp_printing.apps import diag
 from ibp_printing.api import discover, print_image, print_to_first_available
 from ibp_printing.backends import PrintError
 from ibp_printing.log import (
@@ -413,7 +413,7 @@ def print_file(path: Path, printer: Optional[str]) -> int:
     if result is None:
         print("Not printed; see the log.", file=sys.stderr)
         return 1
-    print(diagnostics.describe_result(result, ""))
+    print(diag.describe_result(result, ""))
     return 0 if result.outcome.ok else 1
 
 
@@ -457,9 +457,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.log_dir is not None:
         diag_args += ["--log-dir", str(args.log_dir)]
     if args.command == "list":
-        return diagnostics.main(diag_args)
+        return diag.main(diag_args)
     if args.command == "test":
-        return diagnostics.main(
+        return diag.main(
             diag_args + ["--test-print"] + ([args.printer] if args.printer else [])
         )
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import IO, Optional
 
 from ibp_printing.log import describe_exception, get_logger, log_event
-from ibp_printing.watcher.state import LOCK_FILENAME
+from ibp_printing.apps.watcher.state import LOCK_FILENAME
 
 logger = get_logger(__name__)
 

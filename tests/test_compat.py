@@ -2,8 +2,13 @@
 
 import unittest
 
+import subprocess
+import sys
+
 import ibp_printing
+from ibp_printing import diagnostics as old_diagnostics
 from ibp_printing import labels as old_labels
+from ibp_printing.apps import diag
 from ibp_printing.shipping import labels
 
 
@@ -14,6 +19,25 @@ class CompatTests(unittest.TestCase):
         for name in old_labels.__all__:
             self.assertIs(getattr(old_labels, name), getattr(labels, name), name)
         self.assertIs(ibp_printing.record_purchase, labels.record_purchase)
+        self.assertIn("set_journal_path", old_labels.__all__)
+
+    def test_diagnostics(self):
+        for name in old_diagnostics.__all__:
+            self.assertIs(getattr(old_diagnostics, name), getattr(diag, name), name)
+        self.assertIs(old_diagnostics.build_report, diag.build_report)
+        self.assertIs(old_diagnostics.main, diag.main)
+
+    def test_old_and_new_module_entry_points_run(self):
+        for module in ("ibp_printing.diagnostics", "ibp_printing.apps.diag"):
+            proc = subprocess.run(
+                [sys.executable, "-m", module, "--help"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("ibp-print-diag", proc.stdout)
 
 
 if __name__ == "__main__":

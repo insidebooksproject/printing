@@ -17,9 +17,9 @@ Modules: :mod:`.report` (the report), :mod:`.testprint` (the test label),
 :mod:`.cli` (arguments and ``main``).
 """
 
-from ibp_printing.diagnostics.cli import EXIT_DIRECT_NOT_SENT, main
-from ibp_printing.diagnostics.report import LOG_APP, build_report, report_data
-from ibp_printing.diagnostics.testprint import (
+from ibp_printing.apps.diag.cli import EXIT_DIRECT_NOT_SENT, main
+from ibp_printing.apps.diag.report import LOG_APP, build_report, report_data
+from ibp_printing.apps.diag.testprint import (
     LABEL_SIZE,
     describe_result,
     make_test_label,

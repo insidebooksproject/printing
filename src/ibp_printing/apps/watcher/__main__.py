@@ -1,6 +1,6 @@
 """Command-line entry point: ``ibp-label-watcher`` / ``ibp-label-watcherw``.
 
-Also runnable as ``python -m ibp_printing.watcher`` (or ``pythonw -m ...``).
+Also runnable as ``python -m ibp_printing.apps.watcher`` (or ``pythonw -m ...``).
 """
 
 import argparse
@@ -22,18 +22,18 @@ from ibp_printing.log import (
     log_event,
 )
 from ibp_printing.shipping.paths import TO_PRINT_DIR, downloads_dir, to_print_dir
-from ibp_printing.watcher.config import WatcherConfig, load_config
-from ibp_printing.watcher.instance import SingleInstance
-from ibp_printing.watcher.notify import MB_ICONERROR, MB_SETFOREGROUND, message_box
-from ibp_printing.watcher.service import LabelWatcher
-from ibp_printing.watcher.state import (
+from ibp_printing.apps.watcher.config import WatcherConfig, load_config
+from ibp_printing.apps.watcher.instance import SingleInstance
+from ibp_printing.apps.watcher.notify import MB_ICONERROR, MB_SETFOREGROUND, message_box
+from ibp_printing.apps.watcher.service import LabelWatcher
+from ibp_printing.apps.watcher.state import (
     LOCK_FILENAME,
     STATE_FILENAME,
     StateFile,
     default_state_dir,
 )
 
-logger = get_logger("watcher")
+logger = get_logger("apps.watcher")
 
 EXIT_OK = 0
 EXIT_ALREADY_RUNNING = 1
