@@ -6,7 +6,8 @@
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now ibp-print-server
 #
-# Every start or restart first upgrades ibp-printing from GitHub; the "-"
+# Every start or restart first upgrades ibp-printing from GitHub (the
+# `deploy` branch it was installed from); the "-"
 # keeps the server starting on the installed version when that fails
 # (no network).
 [Unit]
