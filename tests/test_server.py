@@ -218,10 +218,18 @@ class PrintImageTests(ServerTestCase):
         self.assertTrue(self.srv.jobs.empty())
 
     def test_too_large(self):
+        # Only the header: the server answers 413 without reading the body,
+        # so sending one would race its close and could hit a broken pipe.
         self.start(self.label_printer())
-        status, _, body = self.post(b"\0" * (server.MAX_PAYLOAD_SIZE + 1))
-        self.assertEqual(status, 413)
-        self.assertEqual(body["status"], "error")
+        conn = http.client.HTTPConnection("127.0.0.1", self.srv.port, timeout=5)
+        self.addCleanup(conn.close)
+        conn.putrequest("POST", "/print-image")
+        conn.putheader("Content-Type", "image/png")
+        conn.putheader("Content-Length", str(server.MAX_PAYLOAD_SIZE + 1))
+        conn.endheaders()
+        response = conn.getresponse()
+        self.assertEqual(response.status, 413)
+        self.assertEqual(json.loads(response.read())["status"], "error")
 
     def test_missing_content_length(self):
         self.start(self.label_printer())
