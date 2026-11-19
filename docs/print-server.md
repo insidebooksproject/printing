@@ -86,15 +86,20 @@ Install and start the service (the unit file is
 [`packaging/linux/ibp-print-server.service`](../packaging/linux/ibp-print-server.service)):
 
 ```sh
-sudo install -m 0644 packaging/linux/ibp-print-server.service /etc/systemd/system/
+sudo install -m 0644 packaging/linux/ibp-print-server.service \
+  packaging/linux/ibp-print-server-resume.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now ibp-print-server
+sudo systemctl enable ibp-print-server-resume
 curl -s localhost:40121/health
 ```
 
 Every start or restart, including a reboot, runs `uv tool upgrade
 ibp-printing` first, so the station picks up the latest `deploy` branch. If
 the upgrade fails (no network), the installed version starts anyway.
+Closing the lid only suspends the laptop, so `ibp-print-server-resume`
+restarts the server after each wake as well (once the network is up, or
+after a minute).
 
 **Releasing:** `main` and `deploy` stay at the same tip. Merge into `main`,
 then release by fast-forwarding `deploy` to it; stations get it on their next
