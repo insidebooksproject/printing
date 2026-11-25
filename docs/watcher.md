@@ -158,11 +158,9 @@ For a new file in **Downloads**:
      `check-printer\`.
 
    A label's `.json` sidecar moves with it, and the label journal records
-   where it went (see *Who a queued label is for*, above).
-   If the file is locked it retries the move a few times. If it still can't be
-   moved, it stays where it is, its reservation says where it belongs, and the
-   move is retried on every retry tick and after restarts; it is never printed
-   again.
+   where it went (see *Who a queued label is for*, above). A file that stays
+   locked is left where it is and only the move is retried (see *Never
+   printed twice*, above).
 10. For anything but a clean print, a warning box (always on top) says what
     happened and where the file went. Only one box is shown at a time; messages
     that arrive while a box is open are shown together in one box when it is
