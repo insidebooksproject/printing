@@ -126,10 +126,9 @@ For a new file in **Downloads**:
 2. It ignores files that are still downloading: `.crdownload` (Chrome/Edge),
    `.part` (Firefox), `.tmp`, `.partial`, hidden files, and label sidecars
    (`*.json`). It handles the final file when the browser renames it. A
-   0-byte file, or one with a
-   `<name>.part`/`<name>.crdownload` sibling, is a browser placeholder: it is
-   skipped at once (status `in_progress`) and handled when the real data
-   arrives.
+   0-byte file, or one with a `<name>.part`/`<name>.crdownload` sibling, is a
+   browser placeholder: it is skipped at once (status `in_progress`) and
+   handled when the real data arrives.
 3. It checks the file name against `globs`: PNG, JPG, GIF, BMP or PDF. It skips
    `.zpl` and `.epl` files with a warning, because only images and PDFs can be
    printed. Download the PNG or PDF label instead.
@@ -149,8 +148,8 @@ For a new file in **Downloads**:
    with `REPRINT`.
 8. It records the reservation in the state file, then prints with
    `print_to_first_available` and follows the print job for up to
-   `track_timeout_s` (60 s). Only a definite failure (the label never reached the spooler)
-   releases the reservation.
+   `track_timeout_s` (60 s). Only a definite failure (the label never reached
+   the spooler) releases the reservation.
 9. It files the label, adding a `YYYYmmdd-HHMMSS_` prefix to the name:
    - printed: `printed\`;
    - definitely not printed (no usable printer, or the spooler refused the job):
