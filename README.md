@@ -1,13 +1,22 @@
 # ibp-printing
 
 Shared USB label-printer discovery, printing, and diagnostics for the
-[Inside Books Project](https://insidebooksproject.org/) shipping tools,
-[shippy](https://github.com/insidebooksproject/shippy) (CLI) and
-[shippy-gui](https://github.com/insidebooksproject/shippy-gui) (PySide6).
+[Inside Books Project](https://insidebooksproject.org/). Its users are the
+shipping apps [shippy](https://github.com/insidebooksproject/shippy) (CLI) and
+[shippy-gui](https://github.com/insidebooksproject/shippy-gui) (PySide6), which
+buy EasyPost postage and print a 4x6 label on a USB label printer (DYMO,
+Zebra, PM2411BT, ...), and the three commands this package installs:
 
-Both apps buy EasyPost postage and print a 4x6 label on a USB label printer
-(DYMO, Zebra, PM2411BT, ...) attached to a Windows PC. This library is the one
-place that:
+| Command | What it does | Where it runs | Docs |
+|---|---|---|---|
+| `ibp-label-watcher` (`ibp-label-watcherw`: no console) | Prints the labels the apps could not print, and labels downloaded into Downloads | Shipping PCs: Windows (scheduled task) and the [kiosk](https://github.com/insidebooksproject/kiosk) image (systemd user service) | [docs/watcher.md](docs/watcher.md) |
+| `ibp-print-server` | HTTP print server for the request labels the IBP frontend prints (`localhost:40121`) | Intake stations (Linux, CUPS) | [docs/print-server.md](docs/print-server.md) |
+| `ibp-print-diag` | Explains which printers are usable and why; test prints | Anywhere | [Diagnostics CLI](#diagnostics-cli) |
+
+The PM2411BT's protocol, hardware findings and the direct USB design are in
+[docs/printers/pm2411bt.md](docs/printers/pm2411bt.md).
+
+This library is the one place that:
 
 - **prints directly over USB** to supported printers (the PM2411BT), with no
   driver, no print queue and no naming rule, and reads the printer's own
@@ -27,20 +36,20 @@ place that:
 
 ## Install
 
+Apps depend on a release tag (shippy and shippy-gui both pin `v0.4.0`):
+
 ```sh
-uv add "ibp-printing @ git+https://github.com/insidebooksproject/printing@v0.1.0"
+uv add "ibp-printing @ git+https://github.com/insidebooksproject/printing@v0.4.0"
 ```
 
-On Windows this pulls in `pywin32` and `WMI` automatically. Optional extras:
+Stations install the commands as uv tools from the `deploy` branch (see
+[Releasing](#releasing)). On Windows this pulls in `pywin32` and `WMI`
+automatically. Optional extras:
 
 | Extra     | Adds                       | For                                      |
 |-----------|----------------------------|------------------------------------------|
 | `watcher` | `watchdog`, `pypdfium2`    | the [label watcher](#label-watcher)      |
-| `linux`   | `pycups`                   | CUPS queue details and default media size on Linux (needed for label printers with a custom page size, e.g. the [print server](#print-server)) |
-
-```sh
-uv add "ibp-printing[watcher] @ git+https://github.com/insidebooksproject/printing@v0.1.0"
-```
+| `linux`   | `pycups`                   | CUPS queue details and default media size on Linux (needed for label printers with a custom page size, e.g. the [print server](docs/print-server.md)) |
 
 ## Direct USB printing (PM2411BT)
 
@@ -437,19 +446,22 @@ one ID. That lets you follow one label from discovery through each GDI call to
 the spooler's final job status. Records also propagate to the root logger, so
 the host app's own log receives them too.
 
-## Label watcher
+## Releasing
 
-See [docs/watcher.md](docs/watcher.md).
+`main` and `deploy` stay at the same tip. Merge into `main`, then release by
+fast-forwarding `deploy` to it:
 
-## Print server
+```sh
+git fetch origin && git push origin origin/main:deploy
+```
 
-`ibp-print-server` runs on the intake stations (Linux): the IBP frontend posts
-each request label PNG to `http://localhost:40121/print-image` and the server
-prints it on the station's USB label printer through this library. Install it
-with `uv tool install "ibp-printing[linux] @ git+https://github.com/insidebooksproject/printing@deploy"`
-and run it from [`packaging/linux/ibp-print-server.service`](packaging/linux/ibp-print-server.service).
-It upgrades itself from the `deploy` branch on every start.
-HTTP contract, label sizing, setup, releasing and logs: [docs/print-server.md](docs/print-server.md).
+Stations that installed from `deploy` pick it up at the next start of the
+tool: the intake station's `ibp-print-server` unit upgrades on every start
+([docs/print-server.md](docs/print-server.md)), and the kiosk image upgrades
+the watcher and the print server each time they start. Roll back by pushing
+an older commit (`git push --force-with-lease origin <sha>:deploy`) and
+restarting. For shippy and shippy-gui, bump `version` in `pyproject.toml`,
+tag it `vX.Y.Z`, and pin the new tag in each app.
 
 ## Development
 

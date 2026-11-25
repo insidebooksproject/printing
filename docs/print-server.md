@@ -2,13 +2,15 @@
 
 `ibp-print-server` runs on each intake station (Linux, CUPS) and prints the
 request labels the IBP frontend shows, silently, on the station's USB label
-printer. The frontend (`ibp-frontend/src/lib/printServer.ts`) posts the label
-PNG to `http://localhost:40121/print-image`; if the print server is down or
-answers with an error, the frontend offers the label PDF instead.
+printer. The frontend ([`frontend`](https://github.com/insidebooksproject/frontend),
+`src/lib/printServer.ts`) posts the label PNG to
+`http://localhost:40121/print-image`; if the print server is down or answers
+with an error, the frontend offers the label PDF instead.
 
-It replaces the standalone `ibp-print-server` repo (`print-server` command),
-with the same HTTP contract, and prints through this library: the same
-printer discovery, CUPS printing and logs as everything else here.
+It replaces the archived standalone `jonkensta/ibp-print-server` repo
+(`print-server` command), with the same HTTP contract, and prints through
+this library: the same printer discovery, CUPS printing and logs as
+everything else here.
 
 ## HTTP contract
 
@@ -38,7 +40,8 @@ Code128 label by the server) is gone: the backend renders the label
   falling back to the next one only when a printer definitely never got the
   job. A CUPS queue is a label printer only if its name ends in the
   printer's USB `VID:PID` (`iDPRT_SP310_0a5f:0001`), and usable while that
-  device is plugged in (see "Printer naming rule" in the README). A
+  device is plugged in (see the README's
+  [Printer naming rule](../README.md#printer-naming-rule)). A
   supported direct USB printer (PM2411BT) would be used first.
   `--printer NAME` pins one printer: only it is used, and only while CUPS
   has a queue of that name (plugged in or not).
@@ -57,6 +60,10 @@ Code128 label by the server) is gone: the backend renders the label
   PageSize to the label size.
 
 ## Install on an intake station
+
+This is the setup of a station installed by hand, such as
+`ibp-label-printer`. The [kiosk](https://github.com/insidebooksproject/kiosk)
+image installs and runs the print server itself (see its `docs/apps.md`).
 
 As root, once:
 
@@ -82,8 +89,9 @@ ibp-print-server test                 # a test label on the best usable printer
 ibp-print-server print label.png      # print a PNG the way the server would
 ```
 
-Install and start the service (the unit file is
-[`packaging/linux/ibp-print-server.service`](../packaging/linux/ibp-print-server.service)):
+Install and start the service from a clone of this repo
+(`git clone https://github.com/insidebooksproject/printing && cd printing`;
+the unit files are in [`packaging/linux/`](../packaging/linux/)):
 
 ```sh
 sudo install -m 0644 packaging/linux/ibp-print-server.service \
@@ -95,30 +103,11 @@ curl -s localhost:40121/health
 ```
 
 Every start or restart, including a reboot, runs `uv tool upgrade
-ibp-printing` first, so the station picks up the latest `deploy` branch. If
-the upgrade fails (no network), the installed version starts anyway.
-Closing the lid only suspends the laptop, so `ibp-print-server-resume`
-restarts the server after each wake as well (once the network is up, or
-after a minute).
-
-**Releasing:** `main` and `deploy` stay at the same tip. Merge into `main`,
-then release by fast-forwarding `deploy` to it; stations get it on their next
-start:
-
-```sh
-git fetch origin && git push origin origin/main:deploy
-```
-
-Roll back by pushing an older commit to `deploy` (`git push --force-with-lease
-origin <sha>:deploy`) and restarting.
-
-**Moving an older install to `deploy`:** stations installed before 2026-11-17
-track `main`. Switch one over as the `ibp` user, then restart:
-
-```sh
-uv tool install --force "ibp-printing[linux] @ git+https://github.com/insidebooksproject/printing@deploy"
-sudo systemctl restart ibp-print-server
-```
+ibp-printing` first, so the station picks up the latest `deploy` branch (see
+the README's [Releasing](../README.md#releasing)). If the upgrade fails (no
+network), the installed version starts anyway. Closing a laptop's lid only
+suspends it, so `ibp-print-server-resume` restarts the server after each
+wake as well (once the network is up, or after a minute).
 
 **Moving from the old `print-server`:** stop it first, since both use port
 40121.
