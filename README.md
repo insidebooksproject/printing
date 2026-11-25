@@ -88,24 +88,18 @@ vendor driver. Plug it in and it shows up as e.g.
   is active when logging is configured.
 
 **How fallback works.** `print_to_first_available` tries the direct printer
-first. If the job *definitely* never reached it, that is a `PrintError` and
-the next printer is tried:
-
-- printer busy, no permission, unplugged, or an I/O error before sending:
-  the next printer, possibly the same printer's Windows queue;
-- cover open or the printer still realigning after the cover was closed
-  (`reason` `cover_open` / `realign_busy`), or the printer not answering /
-  not taking the job (`no_cover_reply` / `job_not_accepted`; it may be
-  holding a half job that would swallow the next one): **not** the same
-  printer's Windows queue (same VID:PID). Other printers are still tried. If
-  none is left, the `PrintError` has that `.reason` and a message for the
-  volunteer ("Close the printer cover: ..." / "Turn the label printer off
-  and on again: ..."), so shippy and the label watcher keep the label in
-  `to-print\`, and the watcher prints it once the printer is ready.
-
-Once any part of the job has been sent (or may have been: e.g. a Windows
-write whose cancellation was never confirmed), there is no fallback: the
-result is returned as it is, even when it is not ok.
+first and moves on only when the job *definitely* never reached it (a
+`PrintError`). Busy, no permission, unplugged, or an I/O error before
+sending: the next printer, which may be the same printer's Windows queue.
+Cover open or still realigning, or not answering / not taking the job (it
+may hold a half job that would swallow the next one): other printers only,
+**never** the same printer's queue (same VID:PID). If none is left, the
+`PrintError` keeps the direct printer's `.reason` and message, so shippy and
+the label watcher keep the label in `to-print\`, and the watcher prints it
+once the printer is ready. Once any part of the job has been sent (or may
+have been: e.g. a Windows write whose cancellation was never confirmed),
+there is no fallback: the result is returned as it is, even when it is not
+ok.
 
 **What the volunteer sees.** The direct path asks the printer about its cover
 before sending, and the printer reports when it starts and finishes printing:
@@ -113,8 +107,8 @@ before sending, and the printer reports when it starts and finishes printing:
 | Situation | Result | What to do |
 |---|---|---|
 | Label printed | `COMPLETED` (ok) | - |
-| Cover open, or closed moments ago and the printer is still realigning | `PrintError` "Close the printer cover: ..." (`reason` `cover_open` / `realign_busy`; nothing sent; never sent to the same printer's queue; the watcher keeps the label in `to-print\` and prints it once the cover is closed) | Close the cover. |
-| Printer does not answer or does not take the job | `PrintError` "Turn the label printer off and on again: ..." (`no_cover_reply` / `job_not_accepted`; not sent to the same printer's queue) | Power-cycle the printer. |
+| Cover open, or closed moments ago and the printer is still realigning | `PrintError` "Close the printer cover: ..." (`reason` `cover_open` / `realign_busy`; nothing sent) | Close the cover. |
+| Printer does not answer or does not take the job | `PrintError` "Turn the label printer off and on again: ..." (`no_cover_reply` / `job_not_accepted`) | Power-cycle the printer. |
 | Cover opened or closed while the label was printing | `UNCERTAIN` (the printer's realign after a cover close reports the same "printing"/"done" as a label, so success cannot be proven) | Check whether the label came out. |
 | Paper out (roll empty or not loaded) | `UNCERTAIN`, history: "printer stopped accepting data (paper out? jam?) - a partial job is in the printer: power-cycle it before reloading paper" | **Turn the printer off and on before** loading paper, otherwise it may print the leftover half job or swallow the next one. Then check whether a label came out before reprinting. |
 | Printer started but did not finish within the wait | `TIMEOUT` | Check for a jam; the label may still come out. |
@@ -129,7 +123,8 @@ removed), so paper out is only noticed when the printer stops taking data.
 (4x6 in at 203 dpi). A label that is already 812x1218 (EasyPost at 203 dpi) is
 printed dot for dot; anything else (EasyPost's 1200x1800 at 300 dpi, PDFs) is
 scaled to fill the label with nearest-neighbour resampling, which keeps
-barcode bars on whole dots. Landscape images are rotated, never cropped.
+barcode bars on whole dots, plus a rescue that keeps 1 px lines and lone
+pixels from vanishing. Landscape images are rotated, never cropped.
 
 Details, hardware findings and the protocol: [docs/printers/pm2411bt.md](docs/printers/pm2411bt.md).
 
