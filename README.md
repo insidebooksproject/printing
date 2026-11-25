@@ -13,9 +13,6 @@ Zebra, PM2411BT, ...), and the three commands this package installs:
 | `ibp-print-server` | HTTP print server for the request labels the IBP frontend prints (`localhost:40121`) | Intake stations (Linux, CUPS) | [docs/print-server.md](docs/print-server.md) |
 | `ibp-print-diag` | Explains which printers are usable and why; test prints | Anywhere | [Diagnostics CLI](#diagnostics-cli) |
 
-The PM2411BT's protocol, hardware findings and the direct USB design are in
-[docs/printers/pm2411bt.md](docs/printers/pm2411bt.md).
-
 This library is the one place that:
 
 - **prints directly over USB** to supported printers (the PM2411BT), with no
@@ -48,7 +45,7 @@ automatically. Optional extras:
 
 | Extra     | Adds                       | For                                      |
 |-----------|----------------------------|------------------------------------------|
-| `watcher` | `watchdog`, `pypdfium2`    | the [label watcher](#label-watcher)      |
+| `watcher` | `watchdog`, `pypdfium2`    | the [label watcher](docs/watcher.md)     |
 | `linux`   | `pycups`                   | CUPS queue details and default media size on Linux (needed for label printers with a custom page size, e.g. the [print server](docs/print-server.md)) |
 
 ## Direct USB printing (PM2411BT)
@@ -69,7 +66,7 @@ vendor driver. Plug it in and it shows up as e.g.
   (busy, permission, unplugged) or failed with an I/O error before sending -
   never when its cover is open or it is not answering (see below).
 - **Linux:** the printer appears as `/dev/usb/lpN`, which normal users cannot
-  open. Install the udev rule once:
+  open. Install the udev rule once, from a clone of this repo:
   ```sh
   sudo install -m 0644 packaging/linux/60-ibp-label-printer.rules /etc/udev/rules.d/
   sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=usbmisc
@@ -131,9 +128,9 @@ Details, hardware findings and the protocol: [docs/printers/pm2411bt.md](docs/pr
 ## Printer naming rule
 
 This rule applies to printers driven through a print queue (everything except
-the direct USB printers above). A print queue is treated as a label printer **only if its name ends in the
-printer's USB `VID:PID`**, separated from the rest of the name by a space, tab,
-`_` or `-`. For example:
+the direct USB printers above). A print queue is treated as a label printer
+**only if its name ends in the printer's USB `VID:PID`**, separated from the
+rest of the name by a space, tab, `_` or `-`. For example:
 
 ```
 DYMO LabelWriter 4XL 0922:0028
