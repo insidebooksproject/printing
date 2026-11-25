@@ -2,8 +2,8 @@
 
 Shared USB label-printer discovery, printing, and diagnostics for the
 [Inside Books Project](https://insidebooksproject.org/) shipping tools,
-[shippy](https://github.com/jonkensta/shippy) (CLI) and
-[shippy-gui](https://github.com/jonkensta/shippy-gui) (PySide6).
+[shippy](https://github.com/insidebooksproject/shippy) (CLI) and
+[shippy-gui](https://github.com/insidebooksproject/shippy-gui) (PySide6).
 
 Both apps buy EasyPost postage and print a 4x6 label on a USB label printer
 (DYMO, Zebra, PM2411BT, ...) attached to a Windows PC. This library is the one
@@ -28,7 +28,7 @@ place that:
 ## Install
 
 ```sh
-uv add "ibp-printing @ git+https://github.com/jonkensta/ibp-printing@v0.1.0"
+uv add "ibp-printing @ git+https://github.com/insidebooksproject/printing@v0.1.0"
 ```
 
 On Windows this pulls in `pywin32` and `WMI` automatically. Optional extras:
@@ -39,7 +39,7 @@ On Windows this pulls in `pywin32` and `WMI` automatically. Optional extras:
 | `linux`   | `pycups`                   | CUPS queue details and default media size on Linux (needed for label printers with a custom page size, e.g. the [print server](#print-server)) |
 
 ```sh
-uv add "ibp-printing[watcher] @ git+https://github.com/jonkensta/ibp-printing@v0.1.0"
+uv add "ibp-printing[watcher] @ git+https://github.com/insidebooksproject/printing@v0.1.0"
 ```
 
 ## Direct USB printing (PM2411BT)
@@ -446,7 +446,7 @@ See [docs/watcher.md](docs/watcher.md).
 `ibp-print-server` runs on the intake stations (Linux): the IBP frontend posts
 each request label PNG to `http://localhost:40121/print-image` and the server
 prints it on the station's USB label printer through this library. Install it
-with `uv tool install "ibp-printing[linux] @ git+https://github.com/jonkensta/ibp-printing@deploy"`
+with `uv tool install "ibp-printing[linux] @ git+https://github.com/insidebooksproject/printing@deploy"`
 and run it from [`packaging/linux/ibp-print-server.service`](packaging/linux/ibp-print-server.service).
 It upgrades itself from the `deploy` branch on every start.
 HTTP contract, label sizing, setup, releasing and logs: [docs/print-server.md](docs/print-server.md).
