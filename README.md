@@ -30,9 +30,9 @@ This library is the one place that:
 - **logs everything** (queues, USB devices, every GDI step, job status changes,
   PrintService events) to a human-readable log and a JSON-lines log, so a
   failed label can be diagnosed after the fact;
-- **remembers recent labels** in a shared per-user journal, so an app can warn
-  a volunteer before buying postage twice for the same recipient (see
-  [Duplicate-purchase protection](#duplicate-purchase-protection)).
+- **remembers recent labels** and their status (printed, waiting in
+  `to-print`, check the printer) in a shared per-user journal (see
+  [Label journal](#label-journal)).
 
 ## Install
 
@@ -234,7 +234,7 @@ ibp_printing.get_default_printer()      # OS default queue name, or None
 | `PrinterCandidate`, `PrintQueue`, `UsbDevice` | Discovery records. `candidate.reasons()` explains each check. `candidate.transport` is `"direct"` (USB, `candidate.direct_device` set) or `"queue"`. |
 | `save_for_retry(img, name, *, watch_dir=None, meta=None)` | Save a label that could not be printed into `<Downloads>/to-print/` for the label watcher; returns its path. With `meta`, also writes the sidecar `<png>.json` and marks the label `queued` in the journal (see below). |
 | `downloads_dir()` / `to_print_dir(watch_dir=None)` | The (redirection-aware) Downloads folder, and its `to-print` subfolder. |
-| `recipient_key`, `record_purchase`, `update_status`, `find_duplicates`, `pending_labels`, `LabelRecord`, `LabelStatus` | The label journal; see [Duplicate-purchase protection](#duplicate-purchase-protection). |
+| `recipient_key`, `record_purchase`, `update_status`, `find_duplicates`, `pending_labels`, `LabelRecord`, `LabelStatus` | The label journal; see [Label journal](#label-journal). |
 | `get_backend()` / `set_backend(backend)` | Access or replace the backend (`PrinterBackend`), for example with a fake in tests. The default is a `DirectFirstBackend` (direct USB) around the platform backend; a backend passed to `set_backend` replaces both. |
 
 With `track_timeout_s > 0` the Windows backend polls the spooler for the job
@@ -268,24 +268,23 @@ Every non-ok outcome means "the label may or may not come out": tell the user
 to check the printer before reprinting. Never refund or resend automatically;
 `print_to_first_available` never sends such a job to a second printer.
 
-## Duplicate-purchase protection
+## Label journal
 
 When a label can't print, shippy and shippy-gui save it into
-`Downloads\to-print\` and the [label watcher](#label-watcher) prints it later.
-Volunteers then often enter the same shipment again and buy postage a second
-time. `ibp_printing.shipping.labels` (everything is also importable from
-`ibp_printing`) keeps a shared, per-user record of recent labels so the apps
-can warn first:
+`Downloads\to-print\` and the [label watcher](docs/watcher.md) prints it
+later. `ibp_printing.shipping.labels` (`labels` below; everything is also
+importable from `ibp_printing`) keeps a shared, per-user record of recent
+labels and their status, which the apps and the watcher update and the apps
+read to show what is still waiting. `find_duplicates` answers "anything
+recent or still waiting for this recipient?"; shippy and shippy-gui stopped
+asking it before a purchase on 2026-11-19 (the weekly refund job on the IBP
+server refunds unused duplicates).
 
 ```python
 import ibp_printing
 from ibp_printing import LabelStatus
 
 key = ibp_printing.recipient_key(name, street, city, state, zip_code)
-
-# Before buying: anything recent (or still waiting) for this recipient?
-for dup in ibp_printing.find_duplicates(key, within_hours=12):   # newest first
-    print(dup.recipient_label, dup.tracking_code, dup.status, dup.file)
 
 # Right after buying:
 ibp_printing.record_purchase(recipient_key=key, recipient_label="Jane Doe, Huntsville TX",
@@ -305,6 +304,10 @@ ibp_printing.save_for_retry(label, shipment.tracking_code, meta={
 # A UI listing what is waiting for the printer (or for a human):
 for waiting in ibp_printing.pending_labels():   # oldest first
     print(waiting.recipient_label, waiting.status, waiting.file)
+
+# Anything recent (or still waiting) for this recipient?
+for dup in ibp_printing.find_duplicates(key, within_hours=12):   # newest first
+    print(dup.recipient_label, dup.tracking_code, dup.status, dup.file)
 ```
 
 | Name | What it is |
@@ -322,11 +325,8 @@ for waiting in ibp_printing.pending_labels():   # oldest first
 **Sidecars.** `save_for_retry(..., meta={...})` writes `<label>.png.json` (keys
 `tracking_code`, `shipment_id`, `recipient_label`, `recipient_key`, `app`,
 `created`) atomically **before** the PNG appears, so the watcher always sees a
-label's metadata with it. The watcher never prints a `*.json`, moves the sidecar
-along with its label (`printed\`, `check-printer\`, `duplicate_...` names),
-updates the journal (`printed` / `check_printer` / `queued`), and tells the
-volunteer in one information box per pass: "Label for Jane Doe, Huntsville TX
-(tracking 9400...) printed."
+label's metadata with it. What the watcher does with sidecars:
+[docs/watcher.md](docs/watcher.md#who-a-queued-label-is-for-sidecars-and-the-label-journal).
 
 **Storage.** One journal per user: `%LOCALAPPDATA%\ibp-printing\labels.jsonl`
 (Linux: `$XDG_STATE_HOME/ibp-printing/labels.jsonl`, default
