@@ -235,7 +235,7 @@ alone until it is renamed or changed.
 2. Install the watcher as a uv tool, straight from GitHub:
 
    ```powershell
-   uv tool install "ibp-printing[watcher] @ git+https://github.com/jonkensta/ibp-printing"
+   uv tool install "ibp-printing[watcher] @ git+https://github.com/insidebooksproject/printing"
    uv tool update-shell
    ```
 
@@ -248,7 +248,7 @@ alone until it is renamed or changed.
 
    To upgrade later, run `uv tool upgrade ibp-printing`. If that doesn't pick
    up new commits, run
-   `uv tool install --force "ibp-printing[watcher] @ git+https://github.com/jonkensta/ibp-printing"`.
+   `uv tool install --force "ibp-printing[watcher] @ git+https://github.com/insidebooksproject/printing"`.
 
 3. Enable the PrintService Operational event log. This is a one-time step and
    must be run as administrator. Windows turns this log off by default, and

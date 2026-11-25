@@ -69,7 +69,7 @@ As the `ibp` user:
 
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install "ibp-printing[linux] @ git+https://github.com/jonkensta/ibp-printing@deploy"
+uv tool install "ibp-printing[linux] @ git+https://github.com/insidebooksproject/printing@deploy"
 ```
 
 Name the CUPS queue after the printer's USB `VID:PID` (`lsusb`) and set its
@@ -116,7 +116,7 @@ origin <sha>:deploy`) and restarting.
 track `main`. Switch one over as the `ibp` user, then restart:
 
 ```sh
-uv tool install --force "ibp-printing[linux] @ git+https://github.com/jonkensta/ibp-printing@deploy"
+uv tool install --force "ibp-printing[linux] @ git+https://github.com/insidebooksproject/printing@deploy"
 sudo systemctl restart ibp-print-server
 ```
 

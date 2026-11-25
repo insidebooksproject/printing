@@ -21,7 +21,7 @@ IBP shipping app works.** The test code runs from one fixed commit of the
   makes a `diag` shortcut and a results folder, for this window only:
 
 ```powershell
-function diag { uvx --from "git+https://github.com/jonkensta/ibp-printing@2406c4ae84f32ed2901e0758c1ec5779cc1e4ce8" ibp-print-diag @args }
+function diag { uvx --from "git+https://github.com/insidebooksproject/printing@2406c4ae84f32ed2901e0758c1ec5779cc1e4ce8" ibp-print-diag @args }
 New-Item -ItemType Directory -Force "$HOME\Desktop\ibp-test" | Out-Null
 ```
 
@@ -109,7 +109,7 @@ and no `[direct USB]` under *Verdict*. Do not print in this step.
 shippy-gui has no test or preview mode, so **do not create a label**; we will
 do a real-label test together. You may only *look*: in the folder the IBP
 shortcut starts in (shortcut > Properties > *Start in*), run
-`uvx --from "git+https://github.com/jonkensta/shippy-gui.git@refactor/use-ibp-printing" shippy-gui`,
+`uvx --from "git+https://github.com/insidebooksproject/shippy-gui.git@refactor/use-ibp-printing" shippy-gui`,
 check the printer list shows `PM2411BT (USB direct, ...)`, then quit
 (Ctrl+Q) **without** clicking *Create Label*.
 
