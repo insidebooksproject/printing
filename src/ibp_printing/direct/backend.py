@@ -1,4 +1,7 @@
-"""Direct USB printing layered in front of the platform (GDI / CUPS) backend.
+"""Direct USB printing layered in front of the platform backend.
+
+The platform backend is GDI on Windows; on Linux it has no queues
+(:mod:`ibp_printing.backends.linux`), so only direct printers print there.
 
 :class:`DirectFirstBackend` wraps the platform backend:
 

@@ -18,10 +18,9 @@ the old standalone ibp-print-server:
 
 Jobs are printed one at a time, in order, by a single worker thread through
 :func:`ibp_printing.print_to_first_available` (or, with ``--printer``,
-:func:`ibp_printing.print_image` on that printer), so discovery, the CUPS
-media fitting, direct USB printing and logging are the library's own. Each
-job is followed for up to 60 s (the CUPS job state, or the direct printer's
-own reports) and its outcome logged: "label printed (completed)", or an
+:func:`ibp_printing.print_image` on that printer), so discovery, direct USB
+printing and logging are the library's own. Each job is followed for up to
+60 s (the printer's own reports) and its outcome logged: "label printed (completed)", or an
 ERROR "label may not have printed (...); check the printer". The
 query string is ignored for now, so per-request options (e.g. a receipt roll
 size) can be added to :class:`PrintJob` later without changing the routes.
@@ -66,7 +65,7 @@ SERVICE_NAME = "print-server"
 DEFAULT_PORT = 40121
 MAX_PAYLOAD_SIZE = 1024 * 1024  # 1 MB
 JOB_NAME = "IBP Label"
-# How long a job is followed in CUPS (or on a direct printer) before TIMEOUT.
+# How long a job is followed on the printer before TIMEOUT.
 TRACK_TIMEOUT_S = 60.0
 # How long stop() waits for the label being printed before giving up on it.
 STOP_TIMEOUT_S = 90.0

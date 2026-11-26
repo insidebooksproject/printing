@@ -135,7 +135,7 @@ def run_direct_test_print(
     The label goes to the named direct printer (or the best usable one) over
     USB only. When there is none, direct printing is off, or the print is
     refused before sending (``PrintError``), the error says so and nothing is
-    sent anywhere: no Windows / CUPS queue is ever tried.
+    sent anywhere: no Windows queue is ever tried.
     """
     nothing = "nothing was printed and no print queue was tried"
     layer = direct_layer()

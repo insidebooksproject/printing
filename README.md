@@ -10,7 +10,7 @@ Zebra, PM2411BT, ...), and the three commands this package installs:
 | Command | What it does | Where it runs | Docs |
 |---|---|---|---|
 | `ibp-label-watcher` (`ibp-label-watcherw`: no console) | Prints the labels the apps could not print, and labels downloaded into Downloads | Shipping PCs: Windows (scheduled task) and the [kiosk](https://github.com/insidebooksproject/kiosk) image (systemd user service) | [docs/watcher.md](docs/watcher.md) |
-| `ibp-print-server` | HTTP print server for the request labels the IBP frontend prints (`localhost:40121`) | Intake stations (Linux, CUPS) | [docs/print-server.md](docs/print-server.md) |
+| `ibp-print-server` | HTTP print server for the request labels the IBP frontend prints (`localhost:40121`) | Intake stations (Linux) | [docs/print-server.md](docs/print-server.md) |
 | `ibp-print-diag` | Explains which printers are usable and why; test prints | Anywhere | [Diagnostics CLI](#diagnostics-cli) |
 
 This library is the one place that:
@@ -19,11 +19,12 @@ This library is the one place that:
   iDPRT SP310 and the DYMO LabelWriter 450 Turbo), with no
   driver, no print queue and no naming rule, and reads the printer's own
   "printing / done" reports (see [Direct USB printing](#direct-usb-printing-pm2411bt));
-- **discovers** other label printers by matching each print queue to a
-  plugged-in USB device by VID:PID;
-- **prints** a PIL image through the Windows spooler and GDI (CUPS on Linux,
-  fitted to the queue's default media size), falling back to the next printer
-  only if one *definitely* never received the job;
+- **discovers** other label printers on Windows by matching each print
+  queue to a plugged-in USB device by VID:PID;
+- **prints** a PIL image through the Windows spooler and GDI to those,
+  falling back to the next printer only if one *definitely* never received
+  the job. On Linux there are no queues: only the direct USB printers print
+  (CUPS support was dropped on 2026-11-26);
 - **tracks** the spooled job until it prints, errors, is deleted, or times out;
 - **logs everything** (queues, USB devices, every GDI step, job status changes,
   PrintService events) to a human-readable log and a JSON-lines log, so a
@@ -47,7 +48,7 @@ automatically. Optional extras:
 | Extra     | Adds                       | For                                      |
 |-----------|----------------------------|------------------------------------------|
 | `watcher` | `watchdog`, `pypdfium2`    | the [label watcher](docs/watcher.md)     |
-| `linux`   | `pycups`                   | CUPS queue details and default media size on Linux (needed for label printers with a custom page size, e.g. the [print server](docs/print-server.md)) |
+| `linux`   | nothing                    | kept empty so existing `ibp-printing[linux]` installs still resolve (it was `pycups`, for CUPS) |
 
 ## Direct USB printing (PM2411BT)
 
@@ -83,8 +84,9 @@ vendor driver. Plug it in and it shows up as e.g.
   sudo install -m 0644 packaging/linux/60-ibp-label-printer.rules /etc/udev/rules.d/
   sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=usbmisc
   ```
-  (or replug the printer). Without it, printing fails with a "permission
-  denied ... install the udev rule" error and falls back to the next printer.
+  (or replug the printer). A system service (`ibp-print-server`) needs
+  `SupplementaryGroups=lp` instead. Without either, printing fails with a
+  "permission denied ... install the udev rule" error.
 - **Busy printer:** the library opens the printer exclusively for the whole
   job, so nothing else (the Windows spooler, another app, a second shippy
   window) can mix its data into the label. If something else has it open, the
@@ -139,8 +141,8 @@ Details, hardware findings and the protocol: [docs/printers/pm2411bt.md](docs/pr
 
 ## Printer naming rule
 
-This rule applies to printers driven through a print queue (everything except
-the direct USB printers above). A print queue is treated as a label printer
+This rule applies to printers driven through a Windows print queue
+(everything except the direct USB printers above). Linux has no queues. A print queue is treated as a label printer
 **only if its name ends in the printer's USB `VID:PID`**, separated from the
 rest of the name by a space, tab, `_` or `-`. For example:
 
@@ -178,21 +180,6 @@ time when a print server is unreachable.
    *Printers & scanners*. Pick the printer, then *Printer properties*, then
    the *General* tab, and append ` 0922:0028` to the name.
 3. Run `ibp-print-diag` and check that the printer shows `=> usable: YES`.
-
-### Setting it up on Linux
-
-The same rule applies to CUPS queues; the plugged-in USB devices are read from
-sysfs (`/sys/bus/usb/devices`). CUPS queue names cannot contain spaces, so use
-`_` or `-`:
-
-```sh
-lsusb                                   # e.g. "ID 0a5f:0001 Zebra ..."
-sudo lpadmin -p iDPRT_SP310_0a5f:0001 -E -v usb://... -P label.ppd
-ibp-print-diag                          # the queue should show "=> usable: YES"
-```
-
-A queue whose name has no `VID:PID` suffix (an office printer, say) is listed
-by `ibp-print-diag` but never printed to.
 
 ## Public API
 
@@ -251,8 +238,6 @@ With `track_timeout_s > 0` the Windows backend polls the spooler for the job
 (found by the unique `[attempt-id]` at the end of its document name) and
 records each status change in `result.history`. A successful `EndDoc` only
 means the spooler accepted the job. Tracking shows whether it actually printed.
-On Linux the CUPS job (its id from `lp`) is followed the same way, with pycups
-or, without it, `lpstat` (see [docs/print-server.md](docs/print-server.md#logs)).
 
 A **direct USB** job is always followed, whatever `track_timeout_s` is: the
 printer itself reports when it starts and finishes, so the outcome is never
@@ -385,7 +370,7 @@ it open`. With direct printing off (`IBP_PRINTING_DIRECT=0`, `--no-direct`),
 `--test-print --direct-only` prints only over direct USB: if no direct printer
 is usable, direct printing is off, the name is not a direct printer's, or the
 printer refuses before anything is sent (busy, cover open, no answer), it
-fails with exit status 3 and never falls back to a Windows / CUPS queue.
+fails with exit status 3 and never falls back to a Windows queue.
 
 `--listen SECONDS` opens the direct printer, sends `SSSGETCAP` (at the start
 and at the end, nothing else) and prints every line the printer pushes, with

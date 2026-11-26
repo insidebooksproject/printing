@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -149,9 +149,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-linux = [
-    { name = "pycups" },
-]
 watcher = [
     { name = "pypdfium2" },
     { name = "watchdog" },
@@ -171,7 +168,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pillow", specifier = ">=12.2.0" },
-    { name = "pycups", marker = "extra == 'linux'", specifier = ">=2.0.4" },
     { name = "pypdfium2", marker = "extra == 'watcher'", specifier = ">=4.30.0" },
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=310" },
     { name = "watchdog", marker = "extra == 'watcher'", specifier = ">=6.0.0" },
@@ -504,12 +500,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/17/c8/721b3855fe457da51
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/89/446044f33aba0348d35e433f56d12206d010a5281a1df54054d4cfb82388/platformdirs-4.12.2-py3-none-any.whl", hash = "sha256:29dbf06d96c500bc6bdbce75fb0a14d63279c93b1842f97e72a135b33e856983", size = 32457, upload-time = "2026-09-29T18:27:54.43Z" },
 ]
-
-[[package]]
-name = "pycups"
-version = "2.0.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/96/c4/b077f0422cd031e4f3a47c75ce0bcf77f2f2e5bf3648f6945a4d09fd44a5/pycups-2.0.4.tar.gz", hash = "sha256:843e385c1dbf694996ca84ef02a7f30c28376035588f5fbeacd6bae005cf7c8d", size = 65105, upload-time = "2024-04-18T06:20:40.589Z" }
 
 [[package]]
 name = "pylint"
