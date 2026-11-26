@@ -320,6 +320,29 @@ class PrintSession:
     def _finish_timing(self) -> None:
         self.result.elapsed_s = round(self._now(), 3)
 
+    def _status_event(self, status: int, described: str) -> None:
+        """Record a one-byte status reply (plain TSPL, LabelWriter)."""
+        self.result.events.append(
+            (
+                self._now(),
+                PrinterEvent(EventKind.STATUS, described, f"status 0x{status:02x}"),
+            )
+        )
+
+    @staticmethod
+    def _probe_status_byte(
+        probe: StatusProbe,
+        status: Optional[int],
+        flags: Callable[[int], list[str]],
+    ) -> Optional[int]:
+        """Put a one-byte status reply (or its absence) into ``probe``."""
+        if status is None:
+            probe.error = "no reply to the status query"
+            return None
+        probe.status_byte = status
+        probe.flags = flags(status)
+        return status
+
     def _handle_line(self, line: str) -> PrinterEvent:
         event = tspl.parse_line(line)
         at = self._now()
