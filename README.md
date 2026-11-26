@@ -15,7 +15,8 @@ Zebra, PM2411BT, ...), and the three commands this package installs:
 
 This library is the one place that:
 
-- **prints directly over USB** to supported printers (the PM2411BT), with no
+- **prints directly over USB** to supported printers (the PM2411BT and the
+  iDPRT SP310), with no
   driver, no print queue and no naming rule, and reads the printer's own
   "printing / done" reports (see [Direct USB printing](#direct-usb-printing-pm2411bt));
 - **discovers** other label printers by matching each print queue to a
@@ -55,9 +56,17 @@ nothing to install on Windows, no print queue to create or rename, and no
 vendor driver. Plug it in and it shows up as e.g.
 `PM2411BT (USB direct, serial Q529E56G9290059)`, ahead of every print queue.
 
-- **Which printers:** the PM2411BT (4x6 thermal), recognised by the model in
-  its IEEE 1284 device ID (`MDL:PM2411BT`), never by USB VID:PID alone (its
-  VID belongs to a chip maker and is shared by many devices).
+- **Which printers:** the ones in `ibp_printing/printers.py`, recognised by
+  the model in their IEEE 1284 device ID, never by USB VID:PID alone (the
+  PM2411BT's VID belongs to a chip maker and is shared by many devices):
+  - the PM2411BT (`MDL:PM2411BT`), 4x6 thermal, for **shipping** labels;
+  - the iDPRT SP310 (`MODEL:SP310`), 3-inch TSPL, loaded with 36 x 89 mm
+    labels, for **package** labels ([docs/printers/sp310.md](docs/printers/sp310.md)).
+- **Which labels:** each known printer has a role. `print_to_first_available(img,
+  label="package")` (or `"shipping"`) leaves out the known printers for the
+  other kind, so a 4x6 never goes to the SP310 and a package label never to a
+  PM2411BT, whichever is plugged in. Queues for printers that are not known
+  models are still tried; without `label`, every printer is tried, as before.
 - **Windows:** nothing to do. Windows binds its built-in *USB Printing
   Support* driver (`usbprint.sys`) to any USB printer, and the library talks
   to that. If a Windows print queue for the same printer also exists (named
@@ -217,7 +226,7 @@ ibp_printing.get_default_printer()      # OS default queue name, or None
 
 | Name | What it is |
 |------|------------|
-| `print_to_first_available(img, *, job_name=None, track_timeout_s=0.0)` | Print to the best usable printer, trying the next one only on `PrintError` (the job definitely never reached that printer's spooler), so a label is never sent to two printers. |
+| `print_to_first_available(img, *, job_name=None, track_timeout_s=0.0, label=None)` | Print to the best usable printer, trying the next one only on `PrintError` (the job definitely never reached that printer's spooler), so a label is never sent to two printers. `label` (`"shipping"`, `"package"` or a `LabelRole`) skips the known printers for the other kind (`PrintError` reason `no_printer_for_label` if none is left). |
 | `print_image(img, printer_name, *, job_name=None, track_timeout_s=0.0)` | Print to one named queue, or to a direct USB printer by its candidate name (`"PM2411BT (USB direct, serial ...)"`). |
 | `discover()` | Returns a `Discovery` with `queues`, `usb_devices`, `candidates`, `errors`, `direct_devices`, `direct_enabled`, and the ranked `.usable` list. |
 | `direct_enabled()` / `set_direct_enabled(enabled)` | Whether direct USB printing is on; force it on/off (`None` = back to `IBP_PRINTING_DIRECT` / default on). |

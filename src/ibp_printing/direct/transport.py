@@ -50,6 +50,7 @@ from typing import Any, Callable, Iterable, Optional, Self, Sequence, Union
 from ibp_printing.discovery import PM2411BT_VID_PID
 from ibp_printing.log import describe_exception, get_logger, log_event
 from ibp_printing.models import is_supported_direct_model
+from ibp_printing.printers import direct_vid_pids
 
 logger = get_logger(__name__)
 
@@ -284,6 +285,12 @@ class _LineBuffer:
         """The buffered partial line (for logging)."""
         return bytes(self._data)
 
+    def take_all(self) -> bytes:
+        """Remove and return every buffered byte, line or not."""
+        data = bytes(self._data)
+        self._data.clear()
+        return data
+
 
 # -- the contract ------------------------------------------------------------
 
@@ -326,6 +333,15 @@ class Transport(abc.ABC):
         least one line is complete (after draining what is immediately
         available); keeps polling through empty reads otherwise, and returns
         ``[]`` at the timeout. A partial line stays buffered for the next call.
+        """
+
+    @abc.abstractmethod
+    def read_bytes(self, timeout_s: float) -> bytes:
+        """Return every byte received, waiting up to ``timeout_s`` for one.
+
+        For printers that answer in bytes rather than lines (a TSPL
+        ``ESC ! ?`` status byte). Includes anything buffered by an earlier
+        ``read_lines``; returns ``b""`` at the timeout.
         """
 
     @abc.abstractmethod
@@ -372,6 +388,18 @@ class Transport(abc.ABC):
             elapsed_s=round(time.monotonic() - started, 3),
         )
         return lines
+
+    def _log_bytes(self, data: bytes, started: float, timeout_s: float) -> bytes:
+        log_event(
+            logger,
+            logging.DEBUG,
+            "read_bytes returned" if data else "read_bytes timed out with nothing",
+            path=self.path,
+            data=data.hex(" "),
+            timeout_s=timeout_s,
+            elapsed_s=round(time.monotonic() - started, 3),
+        )
+        return data
 
     def _log_read_timeout(self, timeout_s: float, started: float, reads: int) -> None:
         log_event(
@@ -672,6 +700,22 @@ class LinuxUsblpTransport(Transport):
                 # a test pipe): do not spin.
                 time.sleep(min(max(0.0, deadline - time.monotonic()), 0.01))
 
+    def read_bytes(self, timeout_s: float) -> bytes:
+        self._check_open()
+        started = time.monotonic()
+        deadline = started + max(0.0, timeout_s)
+        while True:
+            _, empty = self._read_available()
+            data = self._lines.take_all()
+            remaining = deadline - time.monotonic()
+            if data or remaining <= 0:
+                return self._log_bytes(data, started, timeout_s)
+            ready, _, _ = select.select(
+                [self._fd], [], [], min(remaining, self.poll_slice_s)
+            )
+            if ready and empty:
+                time.sleep(min(max(0.0, deadline - time.monotonic()), 0.01))
+
 
 def discover_linux_usblp(
     sys_root: Union[str, Path] = "/sys", dev_root: Union[str, Path] = "/dev"
@@ -735,8 +779,8 @@ def _linux_device(entry: Path, dev_root: Path) -> DirectDevice:
     device.accessible = access
     # Other USB printers (a DYMO driven by its CUPS queue, say) are never
     # opened here, so their device node permissions are not worth a warning.
-    relevant = is_supported_direct_model(device.model) or (
-        device.vid_pid == PM2411BT_VID_PID
+    relevant = (
+        is_supported_direct_model(device.model) or device.vid_pid in direct_vid_pids()
     )
     log_event(
         logger,
@@ -1695,6 +1739,27 @@ class WindowsUsbprintTransport(Transport):
                     time.sleep(min(self.empty_read_sleep_s, left))
         return self._log_lines(lines, started)
 
+    def read_bytes(self, timeout_s: float) -> bytes:
+        self._check_usable()
+        started = time.monotonic()
+        deadline = started + max(0.0, timeout_s)
+        reads = 0
+        data = self._lines.take_all()
+        while not data:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 and reads:
+                break
+            got = self._read_once(max(0.0, remaining))
+            reads += 1
+            data = self._lines.take_all()
+            if self._abandoned is not None and not data:
+                break
+            if not got and not data:
+                left = deadline - time.monotonic()
+                if left > 0:
+                    time.sleep(min(self.empty_read_sleep_s, left))
+        return self._log_bytes(data, started, timeout_s)
+
     def get_1284_id(self, timeout_s: float = 2.0) -> str:
         """Ask usbprint.sys for the 1284 device ID string ("" on failure)."""
         self._check_usable()
@@ -1892,6 +1957,9 @@ class FakeTransport(Transport):
       CR LF) equals ``line``, queue ``replies``. ``replies`` may instead be a
       callable taking the written line and returning lines (or None). The
       key ``"*"`` matches any written line without its own entry.
+    * ``add_raw_reply(data, reply)``: when one ``write_all`` call writes
+      exactly ``data`` (e.g. ``ESC ! ?``), queue the bytes ``reply`` (or the
+      result of calling it), returned by ``read_bytes``.
     * ``stall_after_bytes``: accept at most this many bytes in total, then
       accept nothing more (``write_all`` returns the short count).
     * ``write_error`` / ``read_error``: raised by the next write/read (use a
@@ -1922,6 +1990,7 @@ class FakeTransport(Transport):
         self.write_error = write_error
         self.read_error = read_error
         self.replies: dict[str, ReplySpec] = dict(replies or {})
+        self.raw_replies: dict[bytes, Union[bytes, Callable[[], bytes]]] = {}
         self.read_timeouts: list[float] = []
         self.write_calls: list[tuple[int, float, int]] = []
         self.open_count = 0
@@ -1943,12 +2012,18 @@ class FakeTransport(Transport):
         self._incoming.append(bytes(data))
 
     def queue_after_reads(self, reads: int, *lines: str) -> None:
-        """Lines that arrive once ``reads`` more ``read_lines`` calls have run."""
+        """Lines that arrive once ``reads`` more read calls have run."""
         self._scheduled.append([reads, list(lines)])
 
     def add_reply(self, line: str, *replies: str) -> None:
         """Reply with ``replies`` whenever ``line`` is written."""
         self.replies[line] = list(replies)
+
+    def add_raw_reply(
+        self, data: bytes, reply: Union[bytes, Callable[[], bytes]]
+    ) -> None:
+        """Reply with the bytes ``reply`` whenever one write is exactly ``data``."""
+        self.raw_replies[bytes(data)] = reply
 
     def opener(self) -> Callable[[DirectDevice], "FakeTransport"]:
         """A drop-in for :func:`open_transport` that returns this transport."""
@@ -1990,6 +2065,9 @@ class FakeTransport(Transport):
         for line in self._written_lines.take_lines():
             self.written_lines.append(line)
             self._reply(line)
+        raw = self.raw_replies.get(chunk) if accept == len(data) else None
+        if raw is not None:
+            self.queue_raw(raw() if callable(raw) else raw)
         return accept
 
     def _reply(self, line: str) -> None:
@@ -2001,6 +2079,19 @@ class FakeTransport(Transport):
             self.queue_lines(*produced)
 
     def read_lines(self, timeout_s: float) -> list[str]:
+        self._receive(timeout_s)
+        lines = self._lines.take_lines()
+        log_event(logger, logging.DEBUG, "fake read_lines", lines=lines)
+        return lines
+
+    def read_bytes(self, timeout_s: float) -> bytes:
+        self._receive(timeout_s)
+        data = self._lines.take_all()
+        log_event(logger, logging.DEBUG, "fake read_bytes", data=data.hex(" "))
+        return data
+
+    def _receive(self, timeout_s: float) -> None:
+        """One read call: raise a scripted error or take in what is due."""
         self._check_open()
         self.read_timeouts.append(timeout_s)
         if self.read_error is not None:
@@ -2016,9 +2107,6 @@ class FakeTransport(Transport):
             data = self._incoming.popleft()
             self.bytes_read += len(data)
             self._lines.feed(data)
-        lines = self._lines.take_lines()
-        log_event(logger, logging.DEBUG, "fake read_lines", lines=lines)
-        return lines
 
     def _close_impl(self) -> None:
         return None

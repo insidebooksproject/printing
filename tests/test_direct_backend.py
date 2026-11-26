@@ -560,5 +560,85 @@ class KillSwitchTests(DirectTestCase):
         self.assertIn("direct.config", text)
 
 
+def sp310_device(path: str = "fake:lp1") -> DirectDevice:
+    """An iDPRT SP310 as Linux sysfs reports it."""
+    return DirectDevice(
+        path=path,
+        vid_pid="20d1:7008",
+        serial="SP310024151990",
+        ieee1284_raw=(
+            "MANUFACTURER:iDPRT;COMMAND SET:ESC/POS;MODEL:SP310;"
+            "COMMENT:Impact Printer;ACTIVE COMMAND:ESC/POS;"
+        ),
+        kind="fake",
+    )
+
+
+def sp310() -> FakeTransport:
+    """A FakeTransport answering ESC ! ? like a ready SP310 (prints, then ready)."""
+    fake = FakeTransport(device=sp310_device())
+    after_job = iter([b"\x20", b"\x20"])
+
+    def status() -> bytes:
+        if b"PRINT 1,1" not in fake.written:
+            return b"\x00"
+        return next(after_job, b"\x00")
+
+    fake.add_raw_reply(b"\x1b!?", status)
+    return fake
+
+
+class PlainTsplTests(DirectTestCase):
+    """An SP310 next to a PM2411BT: routing by label role and protocol."""
+
+    SP310_NAME = "SP310 (USB direct, serial SP310024151990)"
+
+    def harness(self) -> Harness:
+        harness = Harness(devices=[fake_device(), sp310_device()], queues=[], usb=[])
+        transports = {"fake:lp0": printer(), "fake:lp1": sp310()}
+        harness.transports = transports
+
+        def _open(device: DirectDevice) -> FakeTransport:
+            harness.opened.append(device)
+            return transports[device.path].opener()(device)
+
+        harness.backend._opener = _open  # pylint: disable=protected-access
+        return self.use(harness)
+
+    def test_candidates_have_roles(self):
+        harness = self.harness()
+        roles = {
+            c.name: c.role.value for c in harness.backend.discover().usable if c.role
+        }
+        self.assertEqual(roles, {PM_NAME: "shipping", self.SP310_NAME: "package"})
+
+    def test_package_label_goes_to_the_sp310(self):
+        harness = self.harness()
+        img = Image.new("L", (1004, 378), 255)
+        result = ibp_printing.print_to_first_available(img, label="package")
+        self.assertEqual(result.printer_name, self.SP310_NAME)
+        self.assertIs(result.outcome, JobOutcome.COMPLETED)
+        written = bytes(harness.transports["fake:lp1"].written)
+        self.assertIn(b"SIZE 36 mm,89 mm", written)
+        self.assertNotIn(b"SSSGET", written)
+        self.assertEqual(harness.transports["fake:lp0"].written, bytearray())
+
+    def test_shipping_label_goes_to_the_pm2411bt(self):
+        harness = self.harness()
+        result = ibp_printing.print_to_first_available(self.img, label="shipping")
+        self.assertEqual(result.printer_name, PM_NAME)
+        self.assertEqual(harness.transports["fake:lp1"].written, bytearray())
+
+    def test_probe_uses_each_printers_own_query(self):
+        harness = self.harness()
+        probe = harness.backend.probe(sp310_device())
+        self.assertTrue(probe.ready)
+        self.assertEqual(probe.status_byte, 0)
+        self.assertEqual(bytes(harness.transports["fake:lp1"].written), b"\x1b!?")
+        pm_probe = harness.backend.probe(fake_device())
+        self.assertIsNone(pm_probe.status_byte)
+        self.assertIn("SSSGETCAP", harness.transports["fake:lp0"].written_lines)
+
+
 if __name__ == "__main__":
     unittest.main()

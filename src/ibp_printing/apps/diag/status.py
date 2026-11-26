@@ -29,7 +29,7 @@ def probe_direct_devices(
     devices: Sequence[DirectDevice],
     layer: Optional[DirectFirstBackend] = None,
 ) -> dict[str, StatusProbe]:
-    """Probe every supported device (cover/paper queries only), by path."""
+    """Probe every supported device (label-safe status queries only), by path."""
     layer = layer or direct_layer()
     if layer is None:
         return {}
@@ -116,7 +116,8 @@ def run_direct_status(as_json: bool) -> int:
         print(json.dumps(data, indent=2, default=repr))
     else:
         lines = [
-            "-- Direct USB printers (status probe: SSSGETCAP / SSSGETPAPER only) --",
+            "-- Direct USB printers (status probe: SSSGETCAP / SSSGETPAPER, or "
+            "ESC ! ? for plain TSPL, only) --",
             f"  direct USB printing: {'ON' if enabled else 'OFF'} ({why})",
         ]
         lines += describe_direct_devices(devices, probes, candidates)

@@ -126,5 +126,64 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(len(ibp_printing.discover().candidates), 2)
 
 
+class LabelRoleTests(unittest.TestCase):
+    """print_to_first_available(label=...) leaves out printers for other labels."""
+
+    PM = "PM2411BT 2E3C:5760"
+    TURBO = "DYMO LabelWriter 450 Turbo 0922:0021"
+    OTHER = "Some printer 0922:0028"
+
+    def setUp(self):
+        self.img = Image.new("RGB", (1004, 378), "white")
+        self.addCleanup(ibp_printing.set_backend, None)
+        quiet_logging(self)
+
+    def backend(self, *names: str) -> FakeBackend:
+        """A backend with a usable queue for each of ``names``."""
+        backend = FakeBackend(
+            [PrintQueue(name) for name in names],
+            [dymo(name.rsplit(" ", 1)[1]) for name in names],
+        )
+        ibp_printing.set_backend(backend)
+        return backend
+
+    def test_package_label_skips_the_shipping_printer(self):
+        backend = self.backend(self.PM, self.TURBO)
+        result = ibp_printing.print_to_first_available(self.img, label="package")
+        self.assertEqual(result.printer_name, self.TURBO)
+        self.assertEqual([call[0] for call in backend.printed], [self.TURBO])
+
+    def test_shipping_label_skips_the_package_printer(self):
+        backend = self.backend(self.TURBO, self.PM)
+        result = ibp_printing.print_to_first_available(
+            self.img, label=ibp_printing.LabelRole.SHIPPING
+        )
+        self.assertEqual(result.printer_name, self.PM)
+        self.assertEqual([call[0] for call in backend.printed], [self.PM])
+
+    def test_unknown_printers_are_still_tried(self):
+        backend = self.backend(self.OTHER, self.PM)
+        ibp_printing.print_to_first_available(self.img, label="package")
+        self.assertEqual([call[0] for call in backend.printed], [self.OTHER])
+
+    def test_no_printer_for_the_label(self):
+        backend = self.backend(self.PM)
+        with self.assertRaises(PrintError) as caught:
+            ibp_printing.print_to_first_available(self.img, label="package")
+        self.assertEqual(caught.exception.reason, "no_printer_for_label")
+        self.assertIn(self.PM, str(caught.exception))
+        self.assertEqual(backend.printed, [])
+
+    def test_no_label_tries_every_printer(self):
+        backend = self.backend(self.PM, self.TURBO)
+        ibp_printing.print_to_first_available(self.img)
+        self.assertEqual(len(backend.printed), 1)
+
+    def test_unknown_label_is_an_error(self):
+        self.backend(self.PM)
+        with self.assertRaises(ValueError):
+            ibp_printing.print_to_first_available(self.img, label="4x6")
+
+
 if __name__ == "__main__":
     unittest.main()

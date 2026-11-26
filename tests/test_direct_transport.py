@@ -123,6 +123,25 @@ class FakeTransportTests(unittest.TestCase):
         fake.queue_raw(b"ING:DOING\r\n")
         self.assertEqual(fake.read_lines(0.1), ["SSSGETPRINTING:DOING"])
 
+    def test_raw_replies_and_read_bytes(self):
+        fake = FakeTransport()
+        statuses = iter([b"\x20", b"\x00"])
+        fake.add_raw_reply(b"\x1b!?", lambda: next(statuses))
+        self.assertEqual(fake.read_bytes(0.1), b"")
+        fake.write_all(b"\x1b!?", 1.0)
+        self.assertEqual(fake.read_bytes(0.1), b"\x20")
+        fake.write_all(b"\x1b!?x", 1.0)  # not exactly the query: no reply
+        self.assertEqual(fake.read_bytes(0.1), b"")
+        fake.write_all(b"\x1b!?", 1.0)
+        self.assertEqual(fake.read_bytes(0.1), b"\x00")
+
+    def test_read_bytes_returns_a_buffered_partial_line(self):
+        fake = FakeTransport()
+        fake.queue_raw(b"AB\r\nC")
+        self.assertEqual(fake.read_lines(0.1), ["AB"])
+        fake.queue_raw(b"\x00")
+        self.assertEqual(fake.read_bytes(0.1), b"C\x00")
+
     def test_scheduled_lines(self):
         fake = FakeTransport()
         fake.queue_after_reads(2, "SSSGETPRINTING:DONE")
@@ -220,6 +239,16 @@ class LinuxTransportTests(unittest.TestCase):
         elapsed = time.monotonic() - started
         self.assertGreaterEqual(elapsed, 0.25)
         self.assertLess(elapsed, 2.0)
+
+    def test_read_bytes(self):
+        self.peer.sendall(b"\x40")
+        self.assertEqual(self.transport.read_bytes(1.0), b"\x40")
+        started = time.monotonic()
+        self.assertEqual(self.transport.read_bytes(0.3), b"")
+        self.assertGreaterEqual(time.monotonic() - started, 0.25)
+        self.peer.sendall(b"LINE\r\nPART")
+        self.assertEqual(self.transport.read_lines(1.0), ["LINE"])
+        self.assertEqual(self.transport.read_bytes(0.5), b"PART")
 
     def test_zero_timeout_returns_available(self):
         self.peer.sendall(b"A\r\nB\r\n")
@@ -709,6 +738,14 @@ class WindowsTransportLogicTests(unittest.TestCase):
         self.assertGreaterEqual(self.api.cancels, 1)
         self.api.incoming = [b"ING\r\n"]
         self.assertEqual(self.transport.read_lines(1.0), ["SSSGETPRINTING:DOING"])
+
+    def test_read_bytes_and_timeout(self):
+        self.api.incoming = [b"\x20"]
+        self.assertEqual(self.transport.read_bytes(1.0), b"\x20")
+        self.assertEqual(self.transport.read_bytes(0.1), b"")  # pends, cancelled
+        self.api.incoming = [b"A\r\nB"]
+        self.assertEqual(self.transport.read_lines(1.0), ["A"])
+        self.assertEqual(self.transport.read_bytes(0.1), b"B")
 
     def test_events_closed(self):
         self.api.incoming = [b"A\r\n"]

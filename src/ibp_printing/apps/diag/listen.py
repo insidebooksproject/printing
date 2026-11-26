@@ -1,4 +1,8 @@
-"""``ibp-print-diag --listen``: show every line the direct printer pushes."""
+"""``ibp-print-diag --listen``: show every line the direct printer pushes.
+
+Only for the PM2411BT (``Protocol.PM_TSPL``): it is the printer that pushes
+status lines, and ``--listen`` writes its SSSGETCAP query.
+"""
 
 import contextlib
 import json
@@ -19,6 +23,7 @@ from ibp_printing.direct.backend import DirectFirstBackend
 from ibp_printing.direct.transport import Transport, TransportError
 from ibp_printing.log import get_logger, log_event
 from ibp_printing.models import PrinterCandidate
+from ibp_printing.printers import Protocol
 
 logger = get_logger(__name__)
 
@@ -150,10 +155,15 @@ def _open_listen_printer(
     devices, errors = layer.list_devices()
     candidates = candidates_by_path(devices)
     usable = sorted(
-        (c for c in candidates.values() if c.usable), key=PrinterCandidate.rank_key
+        (
+            c
+            for c in candidates.values()
+            if c.usable and c.model is not None and c.model.protocol is Protocol.PM_TSPL
+        ),
+        key=PrinterCandidate.rank_key,
     )
     if not usable:
-        lines = ["--listen: no usable direct USB printer to listen to"]
+        lines = ["--listen: no usable direct USB printer (PM2411BT) to listen to"]
         lines += describe_direct_devices(devices, {}, candidates)
         lines += [f"  error: {error}" for error in errors]
         log_event(logger, logging.ERROR, "\n".join(lines))

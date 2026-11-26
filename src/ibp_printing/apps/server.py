@@ -46,6 +46,7 @@ from PIL import Image
 
 from ibp_printing.apps import diag
 from ibp_printing.api import discover, print_image, print_to_first_available
+from ibp_printing.printers import LabelRole
 from ibp_printing.backends import PrintError
 from ibp_printing.log import (
     attempt,
@@ -94,7 +95,11 @@ class Printers:
         """Names of the printers a job would be sent to."""
         discovery = discover()
         if self.preferred is None:
-            return [candidate.name for candidate in discovery.usable]
+            return [
+                candidate.name
+                for candidate in discovery.usable
+                if candidate.prints(LabelRole.PACKAGE)
+            ]
         if any(candidate.name == self.preferred for candidate in discovery.candidates):
             return [self.preferred]
         log_event(
@@ -113,7 +118,10 @@ class Printers:
                 img, self.preferred, job_name=JOB_NAME, track_timeout_s=TRACK_TIMEOUT_S
             )
         return print_to_first_available(
-            img, job_name=JOB_NAME, track_timeout_s=TRACK_TIMEOUT_S
+            img,
+            job_name=JOB_NAME,
+            track_timeout_s=TRACK_TIMEOUT_S,
+            label=LabelRole.PACKAGE,
         )
 
 

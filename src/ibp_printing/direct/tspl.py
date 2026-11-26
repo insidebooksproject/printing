@@ -182,13 +182,21 @@ def pack_raster(img: Image.Image) -> bytes:
         raise ValueError(
             f"raster must be {LABEL_WIDTH_DOTS}x{LABEL_HEIGHT_DOTS}, got {img.size}"
         )
+    packed = pack_bits(img)
+    if len(packed) != RASTER_SIZE:
+        raise AssertionError(f"packed raster is {len(packed)} bytes")
+    return packed
+
+
+def pack_bits(img: Image.Image) -> bytes:
+    """Pack ``img`` (any size) 8 dots per byte, MSB first, 0 bit = black dot.
+
+    Dark if grey <= 0xAF; each row is padded to whole bytes with white.
+    """
     grey = flatten_for_print(img).convert("L")
     # point(): dark -> 255; mode "1" packs MSB-first with 255 -> bit 1.
     bits = grey.point(_DARK_LUT).convert("1", dither=Image.Dither.NONE)
-    packed = bits.tobytes()
-    if len(packed) != RASTER_SIZE:
-        raise AssertionError(f"packed raster is {len(packed)} bytes")
-    return bytes(byte ^ 0xFF for byte in packed)
+    return bytes(byte ^ 0xFF for byte in bits.tobytes())
 
 
 def rasterize(img: Image.Image) -> bytes:
@@ -258,6 +266,7 @@ class EventKind(str, Enum):
     PAPER = "paper"  # SSSGETPAPER:<YES|...>  (unreliable; log only)
     PRINTING = "printing"  # SSSGETPRINTING:<DOING|DONE>
     COMMAND_ERROR = "command_error"  # Cmd error:<echoed line>
+    STATUS = "status"  # a plain-TSPL ESC ! ? status byte (direct.plain_tspl)
     OTHER = "other"
 
 
