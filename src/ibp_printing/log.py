@@ -1,4 +1,4 @@
-"""Verbose, structured logging for printer troubleshooting.
+"""Verbose, structured logging for printer troubleshooting, and an error log.
 
 Two files are written side by side in the log directory, one pair per
 application so separate processes never share (and fight over rotating) a file:
@@ -8,10 +8,16 @@ application so separate processes never share (and fight over rotating) a file:
 
 Every record carries the host name, process ID, thread name, and the current
 print attempt ID (if any), so one failed label can be followed end to end.
+
+:func:`configure_error_log` adds a third file, ``errors-<app>.jsonl``: every
+WARNING and above from the whole application (not just this package), in the
+same JSON format. The stations' log uploads copy it to ``ibp-server`` with the
+printer logs.
 """
 
 import contextlib
 import contextvars
+import datetime
 import json
 import logging
 import os
@@ -29,6 +35,8 @@ from typing import Any, Callable, Iterator, Optional
 LOGGER_NAME = "ibp_printing"
 LOG_MAX_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 20
+ERROR_LOG_MAX_BYTES = 5 * 1024 * 1024
+ERROR_LOG_BACKUP_COUNT = 4
 HOSTNAME = socket.gethostname()
 DEFAULT_APP = "ibp-printing"
 _APP_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -217,14 +225,31 @@ class HumanFormatter(logging.Formatter):
         return text
 
 
+def _timestamp(record: logging.LogRecord) -> str:
+    """Local time with its UTC offset: ``2026-11-26T14:03:12.481-06:00``."""
+    moment = datetime.datetime.fromtimestamp(record.created).astimezone()
+    return moment.isoformat(timespec="milliseconds")
+
+
 class JsonFormatter(logging.Formatter):
-    """One JSON object per record."""
+    """One JSON object per record.
+
+    ``app`` and ``version`` name the program writing the file; each is left
+    out of the record when not given.
+    """
+
+    def __init__(self, app: Optional[str] = None, version: Optional[str] = None):
+        super().__init__()
+        self.app = app
+        self.version = version
 
     def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, Any] = {
-            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S")
-            + f".{int(record.msecs):03d}",
-            "level": record.levelname,
+        payload: dict[str, Any] = {"ts": _timestamp(record), "level": record.levelname}
+        if self.app:
+            payload["app"] = self.app
+        if self.version:
+            payload["version"] = self.version
+        payload |= {
             "logger": record.name,
             "host": getattr(record, "host", HOSTNAME),
             "pid": record.process,
@@ -366,16 +391,26 @@ def default_log_dir() -> Path:
     return Path(base) / "ibp-printing" / "logs"
 
 
+def _safe_app_name(app: str) -> str:
+    return _APP_NAME_PATTERN.sub("-", app).strip("-.") or DEFAULT_APP
+
+
 def log_file_names(app: str = DEFAULT_APP) -> tuple[str, str]:
     """The ``(text, json)`` log file names used for ``app``."""
-    safe = _APP_NAME_PATTERN.sub("-", app).strip("-.") or DEFAULT_APP
+    safe = _safe_app_name(app)
     return f"printer-{safe}.log", f"printer-{safe}.jsonl"
+
+
+def error_log_file_name(app: str = DEFAULT_APP) -> str:
+    """The error log's file name for ``app``: ``errors-<app>.jsonl``."""
+    return f"errors-{_safe_app_name(app)}.jsonl"
 
 
 def configure_logging(
     log_dir: Optional[Path] = None,
     *,
     app: str = DEFAULT_APP,
+    version: Optional[str] = None,
     console: bool = True,
     level: int = logging.DEBUG,
 ) -> Path:
@@ -388,6 +423,8 @@ def configure_logging(
     stops another from rotating it. Two copies of the *same* app can still
     share a file; ``SafeRotatingFileHandler`` then keeps appending and retries
     rotation later instead of losing records or backups.
+
+    ``version`` (the host application's) goes into every JSON record.
 
     Safe to call more than once; handlers are only added the first time for a
     given directory and app. Records still propagate to the root logger, so a
@@ -410,7 +447,7 @@ def configure_logging(
 
         for filename, formatter in (
             (text_name, HumanFormatter()),
-            (json_name, JsonFormatter()),
+            (json_name, JsonFormatter(app=app, version=version)),
         ):
             handler = SafeRotatingFileHandler(
                 log_dir / filename,
@@ -441,6 +478,7 @@ def configure_logging(
         "logging configured",
         log_dir=str(log_dir),
         app=app,
+        version=version,
         files=[text_name, json_name],
         python=sys.version.split()[0],
         executable=sys.executable,
@@ -452,6 +490,52 @@ def configure_logging(
             hook(f"configure_logging(app={app})")
         except Exception:  # pylint: disable=broad-exception-caught
             package_logger.exception("configure_logging hook failed")
+    return log_dir
+
+
+def configure_error_log(
+    app: str,
+    *,
+    version: Optional[str] = None,
+    log_dir: Optional[Path] = None,
+    level: int = logging.WARNING,
+) -> Path:
+    """Write the whole application's warnings and errors to ``errors-<app>.jsonl``.
+
+    Adds one handler to the **root** logger, so it receives records from
+    every logger in the process (the application's own, this package's,
+    libraries'), at ``level`` and above, in the :class:`JsonFormatter` format
+    with ``app`` and ``version`` set. The file sits in the same directory as
+    the printer logs (default :func:`default_log_dir`), which the stations'
+    log uploads copy to ``ibp-server``. It rotates at 5 MB and keeps 4 backups.
+
+    Only the handler filters by level: the root logger's own level is left
+    alone. Call :func:`install_exception_hooks` as well, so uncaught
+    exceptions are logged.
+
+    Safe to call more than once; the handler is only added the first time for
+    a given directory and app.
+
+    Returns:
+        The directory the error log is written to.
+    """
+    log_dir = Path(log_dir) if log_dir else default_log_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    name = error_log_file_name(app)
+    with _CONFIGURE_LOCK:
+        if (log_dir, name) in _CONFIGURED_DIRS:
+            return log_dir
+        _CONFIGURED_DIRS.add((log_dir, name))
+        handler = SafeRotatingFileHandler(
+            log_dir / name,
+            maxBytes=ERROR_LOG_MAX_BYTES,
+            backupCount=ERROR_LOG_BACKUP_COUNT,
+            encoding="utf-8",
+        )
+        handler.setLevel(level)
+        handler.setFormatter(JsonFormatter(app=app, version=version))
+        handler.addFilter(add_context)
+        logging.getLogger().addHandler(handler)
     return log_dir
 
 
