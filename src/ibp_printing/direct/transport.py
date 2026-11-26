@@ -50,6 +50,7 @@ from typing import Any, Callable, Iterable, Optional, Self, Sequence, Union
 from ibp_printing.discovery import PM2411BT_VID_PID
 from ibp_printing.log import describe_exception, get_logger, log_event
 from ibp_printing.models import is_supported_direct_model
+from ibp_printing.printers import direct_vid_pids
 
 logger = get_logger(__name__)
 
@@ -735,8 +736,8 @@ def _linux_device(entry: Path, dev_root: Path) -> DirectDevice:
     device.accessible = access
     # Other USB printers (a DYMO driven by its CUPS queue, say) are never
     # opened here, so their device node permissions are not worth a warning.
-    relevant = is_supported_direct_model(device.model) or (
-        device.vid_pid == PM2411BT_VID_PID
+    relevant = (
+        is_supported_direct_model(device.model) or device.vid_pid in direct_vid_pids()
     )
     log_event(
         logger,

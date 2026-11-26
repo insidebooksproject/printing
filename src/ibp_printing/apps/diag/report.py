@@ -15,7 +15,6 @@ from typing import Any, Mapping, Optional, Sequence
 
 from ibp_printing.direct.session import StatusProbe
 from ibp_printing.direct.transport import DirectDevice
-from ibp_printing.discovery import PM2411BT_VID_PID
 from ibp_printing.log import default_log_dir, log_file_names
 from ibp_printing.models import (
     Discovery,
@@ -23,6 +22,7 @@ from ibp_printing.models import (
     UsbDevice,
     is_supported_direct_model,
 )
+from ibp_printing.printers import PM2411BT, PrinterModel, model_for_vid_pid
 from ibp_printing.winconst import (
     PRINTER_ATTRIBUTE_BITS,
     PRINTER_STATUS_BITS,
@@ -33,7 +33,7 @@ RULE = "=" * 70
 NO_PRINTER_MESSAGE = "No label printer found plugged in."
 # The app name in ibp-print-diag's own log file names.
 LOG_APP = "diag"
-PROBABLY_PM2411BT = "PM2411BT (probably)"
+PROBABLY_PM2411BT = f"{PM2411BT.name} (probably)"
 
 
 def build_report(
@@ -148,17 +148,23 @@ def direct_section(
 
 
 def identify_device(device: DirectDevice) -> str:
-    """The device's model, or ``"PM2411BT (probably)"`` by VID:PID.
+    """The device's model, or e.g. ``"PM2411BT (probably)"`` by VID:PID.
 
     A device that could not be opened (busy in the Windows spooler, no
-    permission) has no 1284 ID, so no model; the PM2411BT's VID:PID still
-    identifies it.
+    permission) has no 1284 ID, so no model; a supported model's VID:PID
+    still identifies it.
     """
     if device.model:
         return device.model
-    if device.vid_pid == PM2411BT_VID_PID:
-        return PROBABLY_PM2411BT
+    model = _direct_model_by_vid_pid(device)
+    if model is not None:
+        return f"{model.name} (probably)"
     return "(unknown model)"
+
+
+def _direct_model_by_vid_pid(device: DirectDevice) -> Optional[PrinterModel]:
+    model = model_for_vid_pid(device.vid_pid)
+    return model if model is not None and model.direct else None
 
 
 def busy_text(device: DirectDevice) -> str:
@@ -184,9 +190,10 @@ def open_problem(device: DirectDevice) -> str:
 def _supported_text(device: DirectDevice) -> str:
     if is_supported_direct_model(device.model):
         return "YES"
-    if not device.model and device.vid_pid == PM2411BT_VID_PID:
+    model = None if device.model else _direct_model_by_vid_pid(device)
+    if model is not None:
         return (
-            f"probably (VID:PID {PM2411BT_VID_PID} is the PM2411BT's; its "
+            f"probably (VID:PID {model.vid_pid} is the {model.name}'s; its "
             "1284 ID could not be read)"
         )
     return "NO"

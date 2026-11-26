@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
+from ibp_printing.printers import MODELS, direct_model_for_mdl
 from ibp_printing.winconst import (
     PRINTER_ATTRIBUTE_BITS,
     PRINTER_ATTRIBUTE_WORK_OFFLINE,
@@ -15,10 +16,12 @@ from ibp_printing.winconst import (
 if TYPE_CHECKING:
     from ibp_printing.direct.transport import DirectDevice
 
-# Printers the direct-USB path can drive, by IEEE 1284 MDL (case-insensitive).
-# Matching is by model, never by VID:PID alone: the PM2411BT's VID (Artery,
-# 2E3C) is shared by many unrelated devices.
-SUPPORTED_DIRECT_MODELS = frozenset({"PM2411BT"})
+# Printers the direct-USB path can drive, by IEEE 1284 MDL (case-insensitive;
+# see ibp_printing.printers). Matching is by model, never by VID:PID alone:
+# the PM2411BT's VID (Artery, 2E3C) is shared by many unrelated devices.
+SUPPORTED_DIRECT_MODELS = frozenset(
+    mdl for model in MODELS if model.direct for mdl in model.mdl
+)
 
 # Direct candidates are named "<model> (USB direct, serial <serial>)".
 DIRECT_NAME_MARK = "(USB direct"
@@ -31,7 +34,7 @@ UDEV_RULE_HINT = (
 
 def is_supported_direct_model(model: str) -> bool:
     """True if ``model`` (a 1284 MDL) is a printer the direct path supports."""
-    return model.strip().upper() in SUPPORTED_DIRECT_MODELS
+    return direct_model_for_mdl(model) is not None
 
 
 @dataclass(frozen=True)
