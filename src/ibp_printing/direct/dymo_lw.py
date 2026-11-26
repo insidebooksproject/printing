@@ -145,8 +145,9 @@ _DENSITY_COMMAND = {
     Density.DARK: b"\x1bg",
 }
 
-# Match the CUPS queue (DymoPrintQuality Graphics, DymoPrintDensity Normal)
-# until text mode is checked against the scanners (docs/printers/dymo-lw450.md).
+# What the CUPS queue used (DymoPrintQuality Graphics, DymoPrintDensity
+# Normal). Graphics for good: text mode is ~2.5 s faster per label, not worth
+# any risk to the barcode (decided 2026-11-26, docs/printers/dymo-lw450.md).
 DEFAULT_QUALITY = Quality.GRAPHICS
 DEFAULT_DENSITY = Density.NORMAL
 

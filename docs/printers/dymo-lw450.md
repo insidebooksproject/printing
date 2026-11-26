@@ -1,7 +1,7 @@
 # Direct USB printing for the DYMO LabelWriter 450 Turbo
 
 The LabelWriter 450 Turbo is the 300 dpi thermal printer at intake station 1
-(`ibp-label-printer`), loaded with 30321 Large Address labels (1.4 x 3.5 in)
+(`ibp-samwise`, formerly `ibp-label-printer`), loaded with 30321 Large Address labels (1.4 x 3.5 in)
 for the package labels. ibp-printing drives it over USB without CUPS or
 `printer-driver-dymo`, through its own job builder and session
 (`ibp_printing/direct/dymo_lw.py`). Why: a printer that is out of labels or
@@ -32,9 +32,9 @@ then the station itself.
   `idle_settle_s` (3 s) of `0x03` and reports `COMPLETED` anyway, noting
   that this is the only confirmation.
 - **Speed:** graphics mode (300 x 600, what the CUPS queue used) ~5.7 s per
-  label from request to done; text mode (300 x 300) ~3.2 s. Graphics stays
-  the default until a text-mode label's barcode has been scanned at the
-  Book Portal station.
+  label from request to done; text mode (300 x 300) ~3.2 s. Graphics it
+  stays (decided 2026-11-26): printing the label is a small part of intake,
+  so the 2.5 s are not worth any risk to the barcode scanning.
 - **Out of labels:** the printer cannot tell at idle. With the roll removed
   it still answers `0x03`, takes the job, then reports `0xa1` (ready, out
   of paper, error) and blinks its LED. The session returns `ERROR` ("out
@@ -112,8 +112,14 @@ label's edge.
    sudo systemctl daemon-reload && sudo systemctl restart ibp-print-server
    ```
 
-2. The CUPS queue is no longer used by the print server. Keep it only for
-   printing the frontend's label-PDF fallback from the browser.
+2. Remove the DYMO's CUPS queue and driver; nothing uses them (done on
+   `ibp-samwise` 2026-11-26). Without the driver, a replug does not bring
+   the queue back (`udev-configure-printer` finds no driver for it):
+
+   ```sh
+   sudo lpadmin -x DYMO_LabelWriter_450_Turbo_0922:0021
+   sudo apt-get purge printer-driver-dymo
+   ```
 3. Check: `ibp-print-diag` lists `LabelWriter 450 Turbo [USB direct]`, ready
    `0x03`; print one label from the frontend; the log shows
    `direct USB print result ... completed`.
@@ -124,7 +130,5 @@ restart the service (it upgrades on start).
 
 ## Still to check
 
-- Scan a text-mode label's barcode at the Book Portal station, then
-  consider text mode (about 2.5 s faster per label).
 - Whether the DYMO's own feed button, or opening the cover mid-label, shows
   up in the status byte.

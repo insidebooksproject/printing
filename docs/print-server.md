@@ -58,7 +58,7 @@ Code128 label by the server) is gone: the backend renders the label
 ## Install on an intake station
 
 This is the setup of a station installed by hand, such as
-`ibp-label-printer`. The [kiosk](https://github.com/insidebooksproject/kiosk)
+`ibp-samwise` (intake station 1). The [kiosk](https://github.com/insidebooksproject/kiosk)
 image installs and runs the print server itself (see its `docs/apps.md`).
 
 As root, once:
