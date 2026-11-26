@@ -28,9 +28,9 @@ downloaded one from easypost.com), it prints it the same way.
 > postage is no longer valid. shippy and shippy-gui still refund when something
 > fails *before* a label image exists, and a coordinator may refund by hand. Do
 > not download such a shipment's old label from EasyPost to print it; buy a new
-> one. Likewise, if a label in `to-print\` will never be used, delete the
-> file. The apps did not refund it; the weekly refund job on the IBP server
-> refunds labels USPS never scanned, within EasyPost's 30 days.
+> one. A label left in `to-print\` needs nothing from the volunteer: the
+> weekly refund job on the IBP server refunds any label USPS never scans,
+> within EasyPost's 30 days.
 
 A printer on **direct USB** (the PM2411BT, see the README's
 [Direct USB printing](../README.md#direct-usb-printing-pm2411bt)) needs no
