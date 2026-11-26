@@ -272,6 +272,26 @@ class PrintImageTests(ServerTestCase):
         self.assertEqual(backend.sizes, [(10, 4), (20, 8)])
 
 
+class LabelRoleTests(ServerTestCase):
+    """Package labels never go to a shipping (4x6) printer."""
+
+    def test_skips_the_shipping_printer(self):
+        shipping = "PM2411BT 2E3C:5760"
+        backend = RecordingBackend(
+            [PrintQueue(shipping), PrintQueue(LABEL)],
+            [dymo("2E3C:5760"), dymo("0A5F:0001")],
+        )
+        self.start(backend)
+        _, _, body = self.request("GET", "/health")
+        self.assertEqual(body["printers"]["names"], [LABEL])
+        status, _, _ = self.request(
+            "POST", "/print-image", body=png(), headers={"Content-Type": "image/png"}
+        )
+        self.assertEqual(status, 200)
+        backend.wait_for(1)
+        self.assertEqual([call[0] for call in backend.printed], [LABEL])
+
+
 class PreferredPrinterTests(ServerTestCase):
     """--printer: only that printer, if it exists (plugged in or not)."""
 

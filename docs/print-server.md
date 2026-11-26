@@ -42,7 +42,12 @@ Code128 label by the server) is gone: the backend renders the label
   printer's USB `VID:PID` (`iDPRT_SP310_0a5f:0001`), and usable while that
   device is plugged in (see the README's
   [Printer naming rule](../README.md#printer-naming-rule)). A
-  supported direct USB printer (PM2411BT) would be used first.
+  supported direct USB printer for package labels (the iDPRT SP310) is used
+  first. Known printers for 4x6 shipping labels (the PM2411BT) are never
+  used, nor listed by `/health` (`label="package"`, see
+  `ibp_printing/printers.py`); queues for unknown printers still are. The
+  service user needs the `lp` group to open a direct USB printer
+  (`docs/printers/sp310.md`).
   `--printer NAME` pins one printer: only it is used, and only while CUPS
   has a queue of that name (plugged in or not).
 - **Size:** the image is turned to the orientation of the queue's default
