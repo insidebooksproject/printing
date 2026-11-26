@@ -1,6 +1,6 @@
 """``ibp-print-server``: the HTTP label print server on the intake stations.
 
-The IBP frontend (``ibp-frontend/src/lib/printServer.ts``) runs in a browser
+The IBP frontend (``frontend/src/lib/printServer.ts``) runs in a browser
 on the station and posts each request label PNG to this server, which prints
 it silently on the station's USB label printer. The wire contract, kept from
 the old standalone ibp-print-server:
