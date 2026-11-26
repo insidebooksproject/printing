@@ -37,6 +37,9 @@ class Protocol(str, Enum):
     # SSSGETPRINTING lines and SSSGETCAP / SSSGETPAPER queries
     # (direct.tspl, direct.session; docs/printers/pm2411bt.md).
     PM_TSPL = "pm-tspl"
+    # Plain TSPL: uncompressed BITMAP, status from the one-byte ESC ! ? reply
+    # (direct.plain_tspl; docs/printers/sp310.md).
+    TSPL = "tspl"
 
 
 @dataclass(frozen=True)
@@ -52,7 +55,8 @@ class Media:
     height_mm: float
     gap_mm: float
     margin_mm: float = 0.0
-    dots_per_mm: int = 8  # 203 dpi
+    # 8 is 203 dpi (the TSPL printers); 300 dpi is 300 / 25.4.
+    dots_per_mm: float = 8.0
 
     @property
     def width_dots(self) -> int:
@@ -111,6 +115,20 @@ PM2411BT = PrinterModel(
     protocol=Protocol.PM_TSPL,
 )
 
+# iDPRT SP310: 3-inch TSPL label printer (203 dpi). Its 1284 ID says
+# "COMMAND SET:ESC/POS;MODEL:SP310" but it takes TSPL. Loaded with 36 x 89 mm
+# (1.4 x 3.5 in) labels, the size of the DYMO 30321 at the intake stations.
+# Its print lands up to ~0.5 mm past the label's edge, hence the margin
+# (docs/printers/sp310.md).
+SP310 = PrinterModel(
+    name="SP310",
+    mdl=frozenset({"SP310"}),
+    vid_pid="20D1:7008",
+    role=LabelRole.PACKAGE,
+    protocol=Protocol.TSPL,
+    media=Media(width_mm=36, height_mm=89, gap_mm=3, margin_mm=1),
+)
+
 # Printed to through its CUPS queue only (for now). Its widest label is
 # 2.3 in, so it never prints shipping labels.
 LABELWRITER_450_TURBO = PrinterModel(
@@ -120,7 +138,7 @@ LABELWRITER_450_TURBO = PrinterModel(
     role=LabelRole.PACKAGE,
 )
 
-MODELS: tuple[PrinterModel, ...] = (PM2411BT, LABELWRITER_450_TURBO)
+MODELS: tuple[PrinterModel, ...] = (PM2411BT, SP310, LABELWRITER_450_TURBO)
 
 
 def model_for_mdl(mdl: str) -> Optional[PrinterModel]:
@@ -169,6 +187,7 @@ __all__ = [
     "LABELWRITER_450_TURBO",
     "MODELS",
     "PM2411BT",
+    "SP310",
     "LabelRole",
     "Media",
     "PrinterModel",

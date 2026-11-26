@@ -53,12 +53,17 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar, Union
 
 from PIL import Image
 
 from ibp_printing.backends.base import PrintError
 from ibp_printing.direct import tspl
+from ibp_printing.direct.messages import (
+    NO_SAME_PRINTER_FALLBACK,
+    PAPER_OUT_HINT,
+    VOLUNTEER_MESSAGES,
+)
 from ibp_printing.direct.tspl import EventKind, PrinterEvent
 from ibp_printing.log import (
     describe_exception,
@@ -72,41 +77,6 @@ if TYPE_CHECKING:
     from ibp_printing.direct.transport import Transport
 
 logger = get_logger(__name__)
-
-PAPER_OUT_HINT = (
-    "printer stopped accepting data (paper out? jam?) - a partial job is in "
-    "the printer: power-cycle it before reloading paper"
-)
-
-
-# What the volunteer is told for pre-check failures that need them to act.
-VOLUNTEER_MESSAGES = {
-    "cover_open": (
-        "Close the printer cover: the label printer's cover is open, so "
-        "nothing was printed."
-    ),
-    "realign_busy": (
-        "Close the printer cover and wait a few seconds: the label printer was "
-        "still lining up its labels (it does this every time the cover is "
-        "closed), so nothing was printed."
-    ),
-    "no_cover_reply": (
-        "Turn the label printer off and on again: it did not answer, so "
-        "nothing was printed."
-    ),
-    "job_not_accepted": (
-        "Turn the label printer off and on again: it did not take the label, "
-        "so nothing was printed."
-    ),
-}
-
-NO_SAME_PRINTER_FALLBACK = frozenset(VOLUNTEER_MESSAGES)
-"""Reasons after which the label must not go to the same physical printer's
-print queue (its VID:PID twin): the cover is open or the printer is
-realigning (the queue would print into an open printer or race the realign),
-or the printer is not answering / not taking data and may be holding a
-partial job (it would swallow the queue's job as bitmap data and the queue
-would report success). The label waits in ``to-print/`` instead."""
 
 
 class DirectPrintError(PrintError):
@@ -249,16 +219,27 @@ class StatusProbe:  # pylint: disable=too-many-instance-attributes
     history: list[str] = field(default_factory=list)
     error: Optional[str] = None
     elapsed_s: float = 0.0
+    # Plain-TSPL printers: the ESC ! ? status byte and its flag names
+    # (direct.plain_tspl); None for the PM2411BT.
+    status_byte: Optional[int] = None
+    flags: list[str] = field(default_factory=list)
 
     @property
     def ready(self) -> bool:
         """True when a print would pass the pre-check right now."""
-        return self.error is None and self.cover == "CLOSE" and self.printing != "DOING"
+        if self.error is not None:
+            return False
+        if self.status_byte is not None:
+            return self.status_byte == 0
+        return self.cover == "CLOSE" and self.printing != "DOING"
 
     def summary(self) -> str:
         """One line for people: cover, paper, printing state or the error."""
         if self.error:
             return f"probe failed: {self.error}"
+        if self.status_byte is not None:
+            state = ", ".join(self.flags) if self.flags else "ready"
+            return f"status 0x{self.status_byte:02x} ({state})"
         cover = self.cover or "no reply"
         paper = self.paper or "no reply"
         text = f"cover {cover}, paper sensor {paper} (unreliable)"
@@ -574,15 +555,7 @@ class PrintSession:
         """
         step = self.clock()
         try:
-            self._listen(self.timeouts.drain_s)
-            queued = len(self.result.events)
-            self._note(
-                f"drained {queued} queued line(s)",
-                lines=[event.raw for _, event in self.result.events],
-            )
-            paper = self._ask(tspl.QUERY_PAPER, EventKind.PAPER)
-            self._note(f"paper sensor: {paper} (unreliable, not used)")
-            self._gate()
+            self._precheck_steps()
         except DirectPrintError:
             raise
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -593,6 +566,18 @@ class PrintSession:
             ) from exc
         finally:
             self.result.timings["precheck_s"] = round(self.clock() - step, 3)
+
+    def _precheck_steps(self) -> None:
+        """The pre-check's I/O; raises DirectPrintError (or any I/O error)."""
+        self._listen(self.timeouts.drain_s)
+        queued = len(self.result.events)
+        self._note(
+            f"drained {queued} queued line(s)",
+            lines=[event.raw for _, event in self.result.events],
+        )
+        paper = self._ask(tspl.QUERY_PAPER, EventKind.PAPER)
+        self._note(f"paper sensor: {paper} (unreliable, not used)")
+        self._gate()
 
     def _gate(self) -> None:
         """Pass only with the cover CLOSE and no realign running or due."""
@@ -666,9 +651,7 @@ class PrintSession:
         """
         probe = StatusProbe()
         try:
-            self._listen(self.timeouts.drain_s)
-            self._ask_cover()
-            self._ask(tspl.QUERY_PAPER, EventKind.PAPER)
+            self._probe_queries(probe)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             probe.error = exception_summary(exc)
             self._note(
@@ -678,13 +661,20 @@ class PrintSession:
             )
         probe.cover = self.result.cover
         probe.paper = self.result.paper
-        probe.printing = self.printing
+        probe.printing = probe.printing or self.printing
         probe.lines = [event.raw for _, event in self.result.events]
         probe.history = list(self.result.history)
         self._finish_timing()
         probe.elapsed_s = self.result.elapsed_s
         log_event(logger, logging.INFO, "status probe", **probe.to_log())
         return probe
+
+    def _probe_queries(self, probe: StatusProbe) -> None:
+        """The probe's queries (the result records the replies); may raise."""
+        del probe  # the PM2411BT's answers all land in self.result
+        self._listen(self.timeouts.drain_s)
+        self._ask_cover()
+        self._ask(tspl.QUERY_PAPER, EventKind.PAPER)
 
     def send(self, job: bytes) -> bool:
         """Write the job once; True if every byte was accepted.
@@ -862,6 +852,28 @@ class PrintSession:
         return self.result
 
 
+T = TypeVar("T")
+
+
+def guarded_build(build: Callable[[], T]) -> T:
+    """Run ``build`` (rasterize and build a job); any failure is ``bad_image``.
+
+    Raises:
+        DirectPrintError: (``bad_image``) for every exception: ValueError /
+            OSError, but also e.g. PIL's DecompressionBombError. Nothing was
+            sent, so each is a clean PrintError.
+    """
+    try:
+        return build()
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        log_event(
+            logger, logging.ERROR, "cannot build job", error=describe_exception(exc)
+        )
+        raise DirectPrintError(
+            f"cannot build the label job: {exception_summary(exc)}", "bad_image", []
+        ) from exc
+
+
 def prepare_job(img_or_raster: ImageOrRaster) -> bytes:
     """Rasterize (if needed) and build the job, logging sizes and timings.
 
@@ -869,22 +881,15 @@ def prepare_job(img_or_raster: ImageOrRaster) -> bytes:
         DirectPrintError: (``bad_image``) if the input cannot be printed.
     """
     started = time.monotonic()
-    try:
+
+    def build() -> tuple[bytes, float, bytes]:
         if isinstance(img_or_raster, Image.Image):
             raster = tspl.rasterize(img_or_raster)
         else:
             raster = bytes(img_or_raster)
-        rasterized = time.monotonic()
-        job = tspl.build_job(raster)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        # ValueError / OSError, but also e.g. PIL's DecompressionBombError:
-        # nothing was sent, so every failure here is a clean PrintError.
-        log_event(
-            logger, logging.ERROR, "cannot build job", error=describe_exception(exc)
-        )
-        raise DirectPrintError(
-            f"cannot build the label job: {exception_summary(exc)}", "bad_image", []
-        ) from exc
+        return raster, time.monotonic(), tspl.build_job(raster)
+
+    raster, rasterized, job = guarded_build(build)
     done = time.monotonic()
     log_event(
         logger,
