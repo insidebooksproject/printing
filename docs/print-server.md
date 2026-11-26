@@ -42,12 +42,14 @@ Code128 label by the server) is gone: the backend renders the label
   printer's USB `VID:PID` (`iDPRT_SP310_0a5f:0001`), and usable while that
   device is plugged in (see the README's
   [Printer naming rule](../README.md#printer-naming-rule)). A
-  supported direct USB printer for package labels (the iDPRT SP310) is used
-  first. Known printers for 4x6 shipping labels (the PM2411BT) are never
+  supported direct USB printer for package labels (the iDPRT SP310, the DYMO
+  LabelWriter 450 Turbo) is used first, ahead of its CUPS queue. Known printers for 4x6 shipping labels (the PM2411BT) are never
   used, nor listed by `/health` (`label="package"`, see
   `ibp_printing/printers.py`); queues for unknown printers still are. The
   service user needs the `lp` group to open a direct USB printer
-  (`docs/printers/sp310.md`).
+  (`SupplementaryGroups=lp` in the unit; `docs/printers/sp310.md`,
+  `docs/printers/dymo-lw450.md`). Without it, the direct printer cannot be
+  opened and the label goes to its CUPS queue.
   `--printer NAME` pins one printer: only it is used, and only while CUPS
   has a queue of that name (plugged in or not).
 - **Size:** the image is turned to the orientation of the queue's default
@@ -62,7 +64,9 @@ Code128 label by the server) is gone: the backend renders the label
   pycups); without pycups, from `lpoptions -l`, which cannot show a custom
   default size, and the label is then scaled onto a letter page (a WARNING
   in the log). So install the `linux` extra, and set the queue's default
-  PageSize to the label size.
+  PageSize to the label size. A direct USB printer ignores the queue and
+  uses its own media (`ibp_printing/printers.py`); the DYMO's copies the
+  queue's, so labels print in the same place either way.
 
 ## Install on an intake station
 
@@ -93,6 +97,11 @@ ibp-print-server list                 # same as ibp-print-diag: "=> usable: YES"
 ibp-print-server test                 # a test label on the best usable printer
 ibp-print-server print label.png      # print a PNG the way the server would
 ```
+
+Keep the CUPS queue enabled even when the printer is driven directly: it is
+the fallback when the direct path cannot open the printer, and what the
+frontend's label-PDF fallback prints through. (A replug re-enables it
+anyway: `udev-configure-printer`.)
 
 Install and start the service from a clone of this repo
 (`git clone https://github.com/insidebooksproject/printing && cd printing`;
