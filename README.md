@@ -35,10 +35,10 @@ This library is the one place that:
 
 ## Install
 
-Apps depend on a release tag (shippy and shippy-gui both pin `v0.4.0`):
+Apps depend on a release tag (shippy and shippy-gui both pin `v0.5.0`):
 
 ```sh
-uv add "ibp-printing @ git+https://github.com/insidebooksproject/printing@v0.4.0"
+uv add "ibp-printing @ git+https://github.com/insidebooksproject/printing@v0.5.0"
 ```
 
 Stations install the commands as uv tools from the `deploy` branch (see
