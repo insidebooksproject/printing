@@ -116,8 +116,8 @@ def run_direct_status(as_json: bool) -> int:
         print(json.dumps(data, indent=2, default=repr))
     else:
         lines = [
-            "-- Direct USB printers (status probe: SSSGETCAP / SSSGETPAPER, or "
-            "ESC ! ? for plain TSPL, only) --",
+            "-- Direct USB printers (status probe: SSSGETCAP / SSSGETPAPER, "
+            "ESC ! ? for plain TSPL, or ESC A / ESC V for a LabelWriter, only) --",
             f"  direct USB printing: {'ON' if enabled else 'OFF'} ({why})",
         ]
         lines += describe_direct_devices(devices, probes, candidates)

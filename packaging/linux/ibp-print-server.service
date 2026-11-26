@@ -6,6 +6,9 @@
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now ibp-print-server
 #
+# The lp group lets it open the label printer's USB device node
+# (/dev/usb/lpN, root:lp 0660) for direct USB printing.
+#
 # Every start or restart first upgrades ibp-printing from GitHub (the
 # `deploy` branch it was installed from); the "-"
 # keeps the server starting on the installed version when that fails
@@ -18,6 +21,7 @@ Wants=cups.service network-online.target
 [Service]
 Type=simple
 User=ibp
+SupplementaryGroups=lp
 ExecStartPre=-/home/ibp/.local/bin/uv tool upgrade ibp-printing
 ExecStart=/home/ibp/.local/bin/ibp-print-server server
 Restart=on-failure

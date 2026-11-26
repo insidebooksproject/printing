@@ -49,7 +49,6 @@ from ibp_printing.direct.session import (
     StatusProbe,
     guarded_build,
 )
-from ibp_printing.direct.tspl import EventKind, PrinterEvent
 from ibp_printing.log import describe_exception, get_logger, log_event
 from ibp_printing.printers import Media
 from ibp_printing.render import flatten_for_print, orient_portrait
@@ -268,14 +267,7 @@ class TsplSession(PrintSession):
         self.status = status
         self.result.cover = "OPEN" if status & (HEAD_OPEN | COVER_OPEN) else "CLOSE"
         self.result.paper = "NO" if status & PAPER_OUT else "YES"
-        self.result.events.append(
-            (
-                self._now(),
-                PrinterEvent(
-                    EventKind.STATUS, describe_status(status), f"status 0x{status:02x}"
-                ),
-            )
-        )
+        self._status_event(status, describe_status(status))
 
     def _wait(self, seconds: float) -> None:
         """Let ``seconds`` pass, logging anything unexpected that arrives."""
@@ -411,13 +403,9 @@ class TsplSession(PrintSession):
     def _probe_queries(self, probe: StatusProbe) -> None:
         """Drain, then ask ``ESC ! ?`` only (it cannot feed or print)."""
         self._wait(self.timeouts.drain_s)
-        status = self._ask_with_retries()
-        if status is None:
-            probe.error = "no reply to the status query"
-            return
-        probe.status_byte = status
-        probe.flags = status_flags(status)
-        probe.printing = "DOING" if status & PRINTING else None
+        status = self._probe_status_byte(probe, self._ask_with_retries(), status_flags)
+        if status is not None:
+            probe.printing = "DOING" if status & PRINTING else None
 
 
 def probe_status(

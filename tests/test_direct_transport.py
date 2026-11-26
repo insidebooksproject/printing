@@ -353,7 +353,13 @@ class LinuxOpenErrorTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "not_found")
 
 
-DYMO_1284 = "MFG:DYMO;CMD: ;MDL:LabelWriter 450 Turbo;CLS:PRINTER;"
+# As the intake station's LabelWriter 450 Turbo reports it (2026-11-26).
+DYMO_1284 = (
+    "MFG:DYMO;CMD: ;MDL:LabelWriter 450 Turbo;CLASS:PRINTER;"
+    "DESCRIPTION:DYMO LabelWriter 450 Turbo;SERN:18073014353381;"
+)
+# A printer the direct path does not drive (only ever on its queue).
+DYMO_4XL_1284 = "MFG:DYMO;CMD: ;MDL:LabelWriter 4XL;CLASS:PRINTER;"
 
 
 def make_fake_sysfs(
@@ -437,12 +443,20 @@ class LinuxDiscoveryTests(unittest.TestCase):
         self.assertIn("install the udev rule", logs.output[0])
 
     def test_no_access_to_another_printer_is_not_a_warning(self):
-        # A DYMO on its CUPS queue: the direct path never opens it.
-        self.unreadable_node(ieee1284=DYMO_1284, vid_pid=("0922", "0021"))
+        # A DYMO 4XL on its CUPS queue: the direct path never opens it.
+        self.unreadable_node(ieee1284=DYMO_4XL_1284, vid_pid=("0922", "0028"))
         with self.assertNoLogs("ibp_printing", level="INFO"):
             device = tr.discover_linux_usblp(self.root / "sys", self.root / "dev")[0]
         self.assertIs(device.accessible, False)
+        self.assertEqual(device.model, "LabelWriter 4XL")
+
+    def test_no_access_to_the_labelwriter_450_warns(self):
+        self.unreadable_node(ieee1284=DYMO_1284, vid_pid=("0922", "0021"))
+        with self.assertLogs("ibp_printing", level="WARNING") as logs:
+            device = tr.discover_linux_usblp(self.root / "sys", self.root / "dev")[0]
+        self.assertIs(device.accessible, False)
         self.assertEqual(device.model, "LabelWriter 450 Turbo")
+        self.assertIn("install the udev rule", logs.output[0])
 
     def test_open_transport_dispatch(self):
         device = DirectDevice(path=str(self.root / "missing"), kind="usblp")

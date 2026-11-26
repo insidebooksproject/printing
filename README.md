@@ -15,8 +15,8 @@ Zebra, PM2411BT, ...), and the three commands this package installs:
 
 This library is the one place that:
 
-- **prints directly over USB** to supported printers (the PM2411BT and the
-  iDPRT SP310), with no
+- **prints directly over USB** to supported printers (the PM2411BT, the
+  iDPRT SP310 and the DYMO LabelWriter 450 Turbo), with no
   driver, no print queue and no naming rule, and reads the printer's own
   "printing / done" reports (see [Direct USB printing](#direct-usb-printing-pm2411bt));
 - **discovers** other label printers by matching each print queue to a
@@ -61,7 +61,10 @@ vendor driver. Plug it in and it shows up as e.g.
   PM2411BT's VID belongs to a chip maker and is shared by many devices):
   - the PM2411BT (`MDL:PM2411BT`), 4x6 thermal, for **shipping** labels;
   - the iDPRT SP310 (`MODEL:SP310`), 3-inch TSPL, loaded with 36 x 89 mm
-    labels, for **package** labels ([docs/printers/sp310.md](docs/printers/sp310.md)).
+    labels, for **package** labels ([docs/printers/sp310.md](docs/printers/sp310.md));
+  - the DYMO LabelWriter 450 Turbo (`MDL:LabelWriter 450 Turbo`), DYMO's
+    raster protocol, loaded with 30321 labels, for **package** labels
+    ([docs/printers/dymo-lw450.md](docs/printers/dymo-lw450.md)).
 - **Which labels:** each known printer has a role. `print_to_first_available(img,
   label="package")` (or `"shipping"`) leaves out the known printers for the
   other kind, so a 4x6 never goes to the SP310 and a package label never to a

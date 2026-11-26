@@ -2,7 +2,8 @@
 # node (/dev/usb/lpN) for direct USB printing, without joining the "lp" group.
 #
 # One line per USB vendor in ibp_printing.printers: 2e3c is the PM2411BT's
-# (Artery AT32, shared by many OEM label printers), 20d1 the iDPRT SP310's.
+# (Artery AT32, shared by many OEM label printers), 20d1 the iDPRT SP310's,
+# 0922 DYMO's (the LabelWriter 450 Turbo).
 # The rule only grants an ACL to the active local session (systemd-logind
 # applies TAG "uaccess" in 73-seat-late.rules, so this file must sort before
 # 73). A system service (ibp-print-server) gets no ACL from it: give the
@@ -15,3 +16,4 @@
 # (or unplug and replug the printer)
 SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", ATTRS{idVendor}=="2e3c", TAG+="uaccess"
 SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", ATTRS{idVendor}=="20d1", TAG+="uaccess"
+SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", ATTRS{idVendor}=="0922", TAG+="uaccess"
