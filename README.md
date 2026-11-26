@@ -232,7 +232,8 @@ ibp_printing.get_default_printer()      # OS default queue name, or None
 | `direct_enabled()` / `set_direct_enabled(enabled)` | Whether direct USB printing is on; force it on/off (`None` = back to `IBP_PRINTING_DIRECT` / default on). |
 | `find_label_printers()` | `discover().usable`. |
 | `get_default_printer()` | The OS default printer name. |
-| `configure_logging(log_dir=None, *, app="ibp-printing", console=True, level=DEBUG)` | Attach the file handlers for `printer-<app>.log` / `printer-<app>.jsonl`. It's safe to call more than once and returns the log directory. |
+| `configure_logging(log_dir=None, *, app="ibp-printing", version=None, console=True, level=DEBUG)` | Attach the file handlers for `printer-<app>.log` / `printer-<app>.jsonl`. It's safe to call more than once and returns the log directory. |
+| `configure_error_log(app, *, version=None, log_dir=None, level=WARNING)` | Write the whole application's warnings and errors (every logger, through the root logger) to `errors-<app>.jsonl` in the log directory. See [Logs](#logs). |
 | `default_log_dir()` | Where logs go by default. |
 | `PrintError` | Raised **only** when the job definitely never reached the spooler (no printer, CreateDC/CreatePrinterDC/StartDoc failed, or a StartPage/draw failure where AbortDoc returned and the queue holds no job with our attempt ID; an `EndPage`/`EndDoc` failure is never a `PrintError`) or the direct USB printer (could not be opened, cover open, no answer, nothing accepted; then it is a `DirectPrintError` with a `.reason` such as `busy`, `permission`, `cover_open`, `realign_busy`). Every `PrintError` has `.reason` (None when there is no code); `print_to_first_available` keeps the direct printer's reason when it skipped that printer's own queue. Safe to retry. Subclass of `RuntimeError`. |
 | `PrintResult` | `printer_name`, `job_name`, `job_id` (None for direct USB), `outcome`, `history`, `elapsed_s`. |
@@ -435,9 +436,10 @@ failed rotation never drops a record or disturbs the existing backups.
 
 - `printer-<app>.log`: human-readable lines:
   `time LEVEL [attempt-id] thread logger: message | key=value ...`
-- `printer-<app>.jsonl`: one JSON object per line with `ts`, `level`, `logger`,
-  `host`, `pid`, `thread`, `attempt_id`, `msg`, an optional `data` object, and
-  `exc` for exceptions.
+- `printer-<app>.jsonl`: one JSON object per line with `ts` (local time with
+  its UTC offset, `2026-11-26T14:03:12.481-06:00`), `level`, `app`, `version`
+  (when the app passed one), `logger`, `host`, `pid`, `thread`, `attempt_id`,
+  `msg`, an optional `data` object, and `exc` for exceptions.
 
 Both rotate at 5 MB and keep 20 backups. Every print call gets an **attempt ID**
 that tags all of its log records and is added to the spooler document name
@@ -446,6 +448,24 @@ label watcher prints a file, the file's whole story and the spooler job share
 one ID. That lets you follow one label from discovery through each GDI call to
 the spooler's final job status. Records also propagate to the root logger, so
 the host app's own log receives them too.
+
+**Error log.** `configure_error_log(app, version=...)` adds a third file,
+`errors-<app>.jsonl`, in the same directory and JSON format: every WARNING and
+above from the whole application, not just this package (the handler is on
+the root logger; the root logger's level is left alone). It rotates at 5 MB
+and keeps 4 backups. The stations' log uploads copy the log directory to
+`ibp-server`, so this is how an app's errors reach the server's weekly error
+digest (the `meta` repo's `docs/error-reporting.md`). Call
+`install_exception_hooks()` too, so uncaught exceptions are logged:
+
+```python
+import ibp_printing
+from ibp_printing.log import install_exception_hooks
+
+ibp_printing.configure_logging(app="shippy", version=__version__, console=False)
+ibp_printing.configure_error_log("shippy", version=__version__)
+install_exception_hooks()
+```
 
 ## Releasing
 
