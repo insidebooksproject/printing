@@ -40,6 +40,9 @@ class Protocol(str, Enum):
     # Plain TSPL: uncompressed BITMAP, status from the one-byte ESC ! ? reply
     # (direct.plain_tspl; docs/printers/sp310.md).
     TSPL = "tspl"
+    # DYMO LabelWriter raster: SYN-prefixed dot lines, status from the
+    # one-byte ESC A reply (direct.dymo_lw; docs/printers/dymo-lw450.md).
+    DYMO_LW = "dymo-lw"
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,11 @@ class Media:
     margin_mm: float = 0.0
     # 8 is 203 dpi (the TSPL printers); 300 dpi is 300 / 25.4.
     dots_per_mm: float = 8.0
+    # The part of the label that is printed, (across, along) the feed, from
+    # the head's first dot and the label's first line; None: all of it. For
+    # the DYMO, the CUPS PPD's ImageableArea, so labels print where they did
+    # through the queue.
+    printable_mm: Optional[tuple[float, float]] = None
 
     @property
     def width_dots(self) -> int:
@@ -67,6 +75,16 @@ class Media:
     def height_dots(self) -> int:
         """Label length in dots."""
         return round(self.height_mm * self.dots_per_mm)
+
+    @property
+    def printable_dots(self) -> tuple[int, int]:
+        """The printed area in dots, (across, along) the feed."""
+        if self.printable_mm is None:
+            return self.width_dots, self.height_dots
+        return (
+            round(self.printable_mm[0] * self.dots_per_mm),
+            round(self.printable_mm[1] * self.dots_per_mm),
+        )
 
     @property
     def margin_dots(self) -> int:
@@ -129,13 +147,27 @@ SP310 = PrinterModel(
     media=Media(width_mm=36, height_mm=89, gap_mm=3, margin_mm=1),
 )
 
-# Printed to through its CUPS queue only (for now). Its widest label is
-# 2.3 in, so it never prints shipping labels.
+# DYMO LabelWriter 450 Turbo (300 dpi) at the intake stations, loaded with
+# 30321 Large Address labels (1.4 x 3.5 in). The media copies the CUPS queue
+# (lw450t.ppd), so a label prints as it did through the queue: the page is
+# PageSize w102h252 at 300 dpi (425 x 1050 dots), and what is printed is its
+# ImageableArea, 389 x 961 dots from the first dot and line (the raster CUPS
+# sent, checked against cupsfilter on the station 2026-11-26). The gap is not
+# sent: the printer finds each label by its sense hole. Its widest label is
+# 2.3 in, so it never prints shipping labels (docs/printers/dymo-lw450.md).
 LABELWRITER_450_TURBO = PrinterModel(
     name="LabelWriter 450 Turbo",
     mdl=frozenset({"LABELWRITER 450 TURBO"}),
     vid_pid="0922:0021",
     role=LabelRole.PACKAGE,
+    protocol=Protocol.DYMO_LW,
+    media=Media(
+        width_mm=36,
+        height_mm=88.9,
+        gap_mm=0,
+        dots_per_mm=300 / 25.4,
+        printable_mm=(32.94, 81.36),
+    ),
 )
 
 MODELS: tuple[PrinterModel, ...] = (PM2411BT, SP310, LABELWRITER_450_TURBO)

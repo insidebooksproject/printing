@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 from unittest import mock
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from printing_helpers import FakeBackend, dymo, quiet_logging
 
 import ibp_printing
@@ -638,6 +638,82 @@ class PlainTsplTests(DirectTestCase):
         pm_probe = harness.backend.probe(fake_device())
         self.assertIsNone(pm_probe.status_byte)
         self.assertIn("SSSGETCAP", harness.transports["fake:lp0"].written_lines)
+
+
+def dymo_device(path: str = "fake:lp2") -> DirectDevice:
+    """The intake station's LabelWriter 450 Turbo as Linux sysfs reports it."""
+    return DirectDevice(
+        path=path,
+        vid_pid="0922:0021",
+        serial="18073014353381",
+        ieee1284_raw=(
+            "MFG:DYMO;CMD: ;MDL:LabelWriter 450 Turbo;CLASS:PRINTER;"
+            "DESCRIPTION:DYMO LabelWriter 450 Turbo;SERN:18073014353381;"
+        ),
+        kind="fake",
+    )
+
+
+def labelwriter() -> FakeTransport:
+    """A FakeTransport answering ESC A like the LabelWriter (feeds, then idle)."""
+    fake = FakeTransport(device=dymo_device())
+    after_job = iter([b"\x01", b"\x01"])
+
+    def status() -> bytes:
+        if not fake.written.endswith(b"\x1bE") and b"\x16" not in fake.written:
+            return b"\x03"
+        return next(after_job, b"\x03")
+
+    fake.add_raw_reply(b"\x1bA", status)
+    fake.add_raw_reply(b"\x1bV", b"1750283f0J")
+    return fake
+
+
+class DymoTests(DirectTestCase):
+    """A LabelWriter 450 Turbo next to a PM2411BT."""
+
+    DYMO_NAME = "LabelWriter 450 Turbo (USB direct, serial 18073014353381)"
+
+    def harness(self) -> Harness:
+        harness = Harness(devices=[fake_device(), dymo_device()], queues=[], usb=[])
+        transports = {"fake:lp0": printer(), "fake:lp2": labelwriter()}
+        harness.transports = transports
+
+        def _open(device: DirectDevice) -> FakeTransport:
+            harness.opened.append(device)
+            return transports[device.path].opener()(device)
+
+        harness.backend._opener = _open  # pylint: disable=protected-access
+        return self.use(harness)
+
+    def test_package_label_goes_to_the_dymo(self):
+        harness = self.harness()
+        img = Image.new("L", (1004, 378), 255)
+        ImageDraw.Draw(img).rectangle((100, 100, 900, 200), fill=0)
+        result = ibp_printing.print_to_first_available(img, label="package")
+        self.assertEqual(result.printer_name, self.DYMO_NAME)
+        self.assertIs(result.outcome, JobOutcome.COMPLETED)
+        written = bytes(harness.transports["fake:lp2"].written)
+        self.assertTrue(written.startswith(b"\x1bA" + b"\x1b" * 156 + b"\x1bL"))
+        self.assertIn(b"\x1bE", written)
+        self.assertNotIn(b"SSSGET", written)
+        self.assertNotIn(b"SIZE ", written)
+        self.assertNotIn(b"\x1b!?", written)
+        self.assertEqual(harness.transports["fake:lp0"].written, bytearray())
+
+    def test_shipping_label_never_goes_to_the_dymo(self):
+        harness = self.harness()
+        result = ibp_printing.print_to_first_available(self.img, label="shipping")
+        self.assertEqual(result.printer_name, PM_NAME)
+        self.assertEqual(harness.transports["fake:lp2"].written, bytearray())
+
+    def test_probe_sends_only_esc_a_and_esc_v(self):
+        harness = self.harness()
+        probe = harness.backend.probe(dymo_device())
+        self.assertTrue(probe.ready)
+        self.assertEqual(probe.status_byte, 0x03)
+        self.assertIn("version 1750283f0J", probe.lines)
+        self.assertEqual(bytes(harness.transports["fake:lp2"].written), b"\x1bA\x1bV")
 
 
 if __name__ == "__main__":

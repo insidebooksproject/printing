@@ -146,6 +146,9 @@ class SessionTimeouts:
     doing_s: float = 10.0
     # After DOING: waiting for SSSGETPRINTING:DONE.
     done_s: float = 30.0
+    # DYMO LabelWriter: how long the printer must stay idle after the job,
+    # without ever reporting it busy, to count the label as printed.
+    idle_settle_s: float = 3.0
     # After a stalled write: keep listening this long, for the log only.
     stall_listen_s: float = 2.0
     # Longest single read_lines() call.
@@ -223,6 +226,9 @@ class StatusProbe:  # pylint: disable=too-many-instance-attributes
     # (direct.plain_tspl); None for the PM2411BT.
     status_byte: Optional[int] = None
     flags: list[str] = field(default_factory=list)
+    # Whether ``status_byte`` means ready, for printers whose ready byte is
+    # not 0x00 (the DYMO LabelWriter's is 0x03); None: ready is 0x00.
+    status_ok: Optional[bool] = None
 
     @property
     def ready(self) -> bool:
@@ -230,6 +236,8 @@ class StatusProbe:  # pylint: disable=too-many-instance-attributes
         if self.error is not None:
             return False
         if self.status_byte is not None:
+            if self.status_ok is not None:
+                return self.status_ok
             return self.status_byte == 0
         return self.cover == "CLOSE" and self.printing != "DOING"
 
@@ -238,7 +246,11 @@ class StatusProbe:  # pylint: disable=too-many-instance-attributes
         if self.error:
             return f"probe failed: {self.error}"
         if self.status_byte is not None:
-            state = ", ".join(self.flags) if self.flags else "ready"
+            state = (
+                ", ".join(self.flags)
+                if self.flags
+                else ("ready" if self.status_ok is None else "busy")
+            )
             return f"status 0x{self.status_byte:02x} ({state})"
         cover = self.cover or "no reply"
         paper = self.paper or "no reply"

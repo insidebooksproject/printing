@@ -11,8 +11,9 @@
   over USB with the session for its model's protocol
   (:mod:`ibp_printing.printers`): :func:`ibp_printing.direct.session.print_label`
   for the PM2411BT, :func:`ibp_printing.direct.plain_tspl.print_label` for
-  plain-TSPL printers such as the SP310. Anything else goes to the platform
-  backend.
+  plain-TSPL printers such as the SP310, and
+  :func:`ibp_printing.direct.dymo_lw.print_label` for the DYMO LabelWriter
+  450 Turbo. Anything else goes to the platform backend.
 
 Outcome mapping (direct jobs):
 
@@ -29,9 +30,9 @@ Outcome mapping (direct jobs):
   any other outcome nothing is retried or sent elsewhere.
 
 ``track_timeout_s``: a direct job is always followed (the PM2411BT pushes
-``SSSGETPRINTING:DOING`` / ``DONE``; a plain-TSPL printer's status byte shows
-it printing, then ready), so the outcome is never NOT_TRACKED, even with
-``track_timeout_s=0``. The wait for the end of the print is
+``SSSGETPRINTING:DOING`` / ``DONE``; a plain-TSPL printer's or a
+LabelWriter's status byte shows it printing, then ready), so the outcome is
+never NOT_TRACKED, even with ``track_timeout_s=0``. The wait for the end of the print is
 ``max(track_timeout_s, SessionTimeouts.done_s)`` (30 s by default); the other
 waits (pre-check, write, 10 s for the start) keep their defaults.
 """
@@ -44,7 +45,7 @@ from typing import Any, Callable, Optional
 from PIL import Image
 
 from ibp_printing.backends.base import PrinterBackend, PrintError
-from ibp_printing.direct import plain_tspl
+from ibp_printing.direct import dymo_lw, plain_tspl
 from ibp_printing.direct.config import direct_mode, log_direct_mode
 from ibp_printing.direct.session import (
     DirectPrintError,
@@ -183,8 +184,8 @@ class DirectFirstBackend(PrinterBackend):
         """Label-safe status probe for the device's protocol; never raises.
 
         The PM2411BT is asked SSSGETCAP / SSSGETPAPER, a plain-TSPL printer
-        ESC ! ?. Only supported models are probed: another printer could
-        print the query text.
+        ESC ! ?, a LabelWriter ESC A and ESC V. Only supported models are
+        probed: another printer could print the query text.
         """
         model = direct_model_for_mdl(device.model)
         if model is None:
@@ -206,6 +207,8 @@ class DirectFirstBackend(PrinterBackend):
         with transport:
             if model.protocol is Protocol.TSPL:
                 return plain_tspl.probe_status(transport, timeouts=self.timeouts)
+            if model.protocol is Protocol.DYMO_LW:
+                return dymo_lw.probe_status(transport, timeouts=self.timeouts)
             return probe_status(transport, timeouts=self.timeouts)
 
     def open_device(self, device: DirectDevice) -> Transport:
@@ -408,6 +411,12 @@ def _run_session(
         if model.media is None:
             raise ValueError(f"{model.name} has no media size")
         return plain_tspl.print_label(
+            transport, img, media=model.media, job_name=job_name, timeouts=timeouts
+        )
+    if model.protocol is Protocol.DYMO_LW:
+        if model.media is None:
+            raise ValueError(f"{model.name} has no media size")
+        return dymo_lw.print_label(
             transport, img, media=model.media, job_name=job_name, timeouts=timeouts
         )
     return print_label(transport, img, job_name=job_name, timeouts=timeouts)

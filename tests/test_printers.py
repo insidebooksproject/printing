@@ -4,7 +4,7 @@ import unittest
 
 from ibp_printing import printers
 from ibp_printing.models import SUPPORTED_DIRECT_MODELS, is_supported_direct_model
-from ibp_printing.printers import LabelRole
+from ibp_printing.printers import LabelRole, Protocol
 
 
 class RegistryTests(unittest.TestCase):
@@ -15,13 +15,24 @@ class RegistryTests(unittest.TestCase):
         self.assertIsNone(printers.model_for_mdl(""))
         self.assertIsNone(printers.model_for_mdl("PM241"))
 
-    def test_queue_only_models_are_not_direct(self):
+    def test_labelwriter_450_is_direct(self):
         dymo = printers.model_for_mdl("LabelWriter 450 Turbo")
         self.assertIs(dymo, printers.LABELWRITER_450_TURBO)
-        self.assertFalse(dymo.direct)
-        self.assertIsNone(printers.direct_model_for_mdl("LabelWriter 450 Turbo"))
-        self.assertFalse(is_supported_direct_model("LabelWriter 450 Turbo"))
-        self.assertNotIn("0922:0021", printers.direct_vid_pids())
+        self.assertIs(dymo.protocol, Protocol.DYMO_LW)
+        self.assertIs(printers.direct_model_for_mdl("LabelWriter 450 Turbo"), dymo)
+        self.assertTrue(is_supported_direct_model("LabelWriter 450 Turbo"))
+        self.assertIn("0922:0021", printers.direct_vid_pids())
+        self.assertEqual(dymo.usb_vendor, "0922")
+        # The CUPS queue's PageSize w102h252 (30321) at 300 dpi.
+        self.assertEqual((dymo.media.width_dots, dymo.media.height_dots), (425, 1050))
+        self.assertEqual(dymo.media.margin_dots, 0)
+
+    def test_a_model_without_a_protocol_is_not_direct(self):
+        queue_only = printers.PrinterModel(
+            name="X", mdl=frozenset({"X"}), vid_pid="1234:5678", role=LabelRole.PACKAGE
+        )
+        self.assertFalse(queue_only.direct)
+        self.assertIsNone(printers.direct_model_for_mdl("LabelWriter 4XL"))
 
     def test_supported_direct_models_follow_the_registry(self):
         direct = {mdl for m in printers.MODELS if m.direct for mdl in m.mdl}
