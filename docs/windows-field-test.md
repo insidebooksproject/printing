@@ -1,7 +1,10 @@
 # Windows field test: direct USB printing (PM2411BT)
 
 > **Status: finished (2026-11).** PM2411BT direct USB printing field-tested OK
-> on the shipping laptops; released in v0.2.0. Kept for reference.
+> on the shipping laptops; released in v0.2.0. Kept as a checklist for
+> another Windows PC: to repeat it, use `@deploy` instead of the pinned
+> commit, and in Step 4 shippy-gui's `@deploy` (the `refactor/use-ibp-printing`
+> branch is gone). The individual results were not recorded here.
 
 > Tests ibp-printing commit `2406c4a` (`2406c4ae84f32ed2901e0758c1ec5779cc1e4ce8`, branch `feat/direct-usb`).
 > Every command below is pinned to it, so the code cannot change under you.

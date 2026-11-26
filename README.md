@@ -1,13 +1,19 @@
 # ibp-printing
 
 Shared USB label-printer discovery, printing, and diagnostics for the
-[Inside Books Project](https://insidebooksproject.org/) shipping tools,
-[shippy](https://github.com/insidebooksproject/shippy) (CLI) and
-[shippy-gui](https://github.com/insidebooksproject/shippy-gui) (PySide6).
+[Inside Books Project](https://insidebooksproject.org/). Its users are the
+shipping apps [shippy](https://github.com/insidebooksproject/shippy) (CLI) and
+[shippy-gui](https://github.com/insidebooksproject/shippy-gui) (PySide6), which
+buy EasyPost postage and print a 4x6 label on a USB label printer (DYMO,
+Zebra, PM2411BT, ...), and the three commands this package installs:
 
-Both apps buy EasyPost postage and print a 4x6 label on a USB label printer
-(DYMO, Zebra, PM2411BT, ...) attached to a Windows PC. This library is the one
-place that:
+| Command | What it does | Where it runs | Docs |
+|---|---|---|---|
+| `ibp-label-watcher` (`ibp-label-watcherw`: no console) | Prints the labels the apps could not print, and labels downloaded into Downloads | Shipping PCs: Windows (scheduled task) and the [kiosk](https://github.com/insidebooksproject/kiosk) image (systemd user service) | [docs/watcher.md](docs/watcher.md) |
+| `ibp-print-server` | HTTP print server for the request labels the IBP frontend prints (`localhost:40121`) | Intake stations (Linux, CUPS) | [docs/print-server.md](docs/print-server.md) |
+| `ibp-print-diag` | Explains which printers are usable and why; test prints | Anywhere | [Diagnostics CLI](#diagnostics-cli) |
+
+This library is the one place that:
 
 - **prints directly over USB** to supported printers (the PM2411BT), with no
   driver, no print queue and no naming rule, and reads the printer's own
@@ -21,26 +27,26 @@ place that:
 - **logs everything** (queues, USB devices, every GDI step, job status changes,
   PrintService events) to a human-readable log and a JSON-lines log, so a
   failed label can be diagnosed after the fact;
-- **remembers recent labels** in a shared per-user journal, so an app can warn
-  a volunteer before buying postage twice for the same recipient (see
-  [Duplicate-purchase protection](#duplicate-purchase-protection)).
+- **remembers recent labels** and their status (printed, waiting in
+  `to-print`, check the printer) in a shared per-user journal (see
+  [Label journal](#label-journal)).
 
 ## Install
 
+Apps depend on a release tag (shippy and shippy-gui both pin `v0.4.0`):
+
 ```sh
-uv add "ibp-printing @ git+https://github.com/insidebooksproject/printing@v0.1.0"
+uv add "ibp-printing @ git+https://github.com/insidebooksproject/printing@v0.4.0"
 ```
 
-On Windows this pulls in `pywin32` and `WMI` automatically. Optional extras:
+Stations install the commands as uv tools from the `deploy` branch (see
+[Releasing](#releasing)). On Windows this pulls in `pywin32` and `WMI`
+automatically. Optional extras:
 
 | Extra     | Adds                       | For                                      |
 |-----------|----------------------------|------------------------------------------|
-| `watcher` | `watchdog`, `pypdfium2`    | the [label watcher](#label-watcher)      |
-| `linux`   | `pycups`                   | CUPS queue details and default media size on Linux (needed for label printers with a custom page size, e.g. the [print server](#print-server)) |
-
-```sh
-uv add "ibp-printing[watcher] @ git+https://github.com/insidebooksproject/printing@v0.1.0"
-```
+| `watcher` | `watchdog`, `pypdfium2`    | the [label watcher](docs/watcher.md)     |
+| `linux`   | `pycups`                   | CUPS queue details and default media size on Linux (needed for label printers with a custom page size, e.g. the [print server](docs/print-server.md)) |
 
 ## Direct USB printing (PM2411BT)
 
@@ -60,7 +66,7 @@ vendor driver. Plug it in and it shows up as e.g.
   (busy, permission, unplugged) or failed with an I/O error before sending -
   never when its cover is open or it is not answering (see below).
 - **Linux:** the printer appears as `/dev/usb/lpN`, which normal users cannot
-  open. Install the udev rule once:
+  open. Install the udev rule once, from a clone of this repo:
   ```sh
   sudo install -m 0644 packaging/linux/60-ibp-label-printer.rules /etc/udev/rules.d/
   sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=usbmisc
@@ -79,24 +85,18 @@ vendor driver. Plug it in and it shows up as e.g.
   is active when logging is configured.
 
 **How fallback works.** `print_to_first_available` tries the direct printer
-first. If the job *definitely* never reached it, that is a `PrintError` and
-the next printer is tried:
-
-- printer busy, no permission, unplugged, or an I/O error before sending:
-  the next printer, possibly the same printer's Windows queue;
-- cover open or the printer still realigning after the cover was closed
-  (`reason` `cover_open` / `realign_busy`), or the printer not answering /
-  not taking the job (`no_cover_reply` / `job_not_accepted`; it may be
-  holding a half job that would swallow the next one): **not** the same
-  printer's Windows queue (same VID:PID). Other printers are still tried. If
-  none is left, the `PrintError` has that `.reason` and a message for the
-  volunteer ("Close the printer cover: ..." / "Turn the label printer off
-  and on again: ..."), so shippy and the label watcher keep the label in
-  `to-print\`, and the watcher prints it once the printer is ready.
-
-Once any part of the job has been sent (or may have been: e.g. a Windows
-write whose cancellation was never confirmed), there is no fallback: the
-result is returned as it is, even when it is not ok.
+first and moves on only when the job *definitely* never reached it (a
+`PrintError`). Busy, no permission, unplugged, or an I/O error before
+sending: the next printer, which may be the same printer's Windows queue.
+Cover open or still realigning, or not answering / not taking the job (it
+may hold a half job that would swallow the next one): other printers only,
+**never** the same printer's queue (same VID:PID). If none is left, the
+`PrintError` keeps the direct printer's `.reason` and message, so shippy and
+the label watcher keep the label in `to-print\`, and the watcher prints it
+once the printer is ready. Once any part of the job has been sent (or may
+have been: e.g. a Windows write whose cancellation was never confirmed),
+there is no fallback: the result is returned as it is, even when it is not
+ok.
 
 **What the volunteer sees.** The direct path asks the printer about its cover
 before sending, and the printer reports when it starts and finishes printing:
@@ -104,8 +104,8 @@ before sending, and the printer reports when it starts and finishes printing:
 | Situation | Result | What to do |
 |---|---|---|
 | Label printed | `COMPLETED` (ok) | - |
-| Cover open, or closed moments ago and the printer is still realigning | `PrintError` "Close the printer cover: ..." (`reason` `cover_open` / `realign_busy`; nothing sent; never sent to the same printer's queue; the watcher keeps the label in `to-print\` and prints it once the cover is closed) | Close the cover. |
-| Printer does not answer or does not take the job | `PrintError` "Turn the label printer off and on again: ..." (`no_cover_reply` / `job_not_accepted`; not sent to the same printer's queue) | Power-cycle the printer. |
+| Cover open, or closed moments ago and the printer is still realigning | `PrintError` "Close the printer cover: ..." (`reason` `cover_open` / `realign_busy`; nothing sent) | Close the cover. |
+| Printer does not answer or does not take the job | `PrintError` "Turn the label printer off and on again: ..." (`no_cover_reply` / `job_not_accepted`) | Power-cycle the printer. |
 | Cover opened or closed while the label was printing | `UNCERTAIN` (the printer's realign after a cover close reports the same "printing"/"done" as a label, so success cannot be proven) | Check whether the label came out. |
 | Paper out (roll empty or not loaded) | `UNCERTAIN`, history: "printer stopped accepting data (paper out? jam?) - a partial job is in the printer: power-cycle it before reloading paper" | **Turn the printer off and on before** loading paper, otherwise it may print the leftover half job or swallow the next one. Then check whether a label came out before reprinting. |
 | Printer started but did not finish within the wait | `TIMEOUT` | Check for a jam; the label may still come out. |
@@ -120,16 +120,17 @@ removed), so paper out is only noticed when the printer stops taking data.
 (4x6 in at 203 dpi). A label that is already 812x1218 (EasyPost at 203 dpi) is
 printed dot for dot; anything else (EasyPost's 1200x1800 at 300 dpi, PDFs) is
 scaled to fill the label with nearest-neighbour resampling, which keeps
-barcode bars on whole dots. Landscape images are rotated, never cropped.
+barcode bars on whole dots, plus a rescue that keeps 1 px lines and lone
+pixels from vanishing. Landscape images are rotated, never cropped.
 
 Details, hardware findings and the protocol: [docs/printers/pm2411bt.md](docs/printers/pm2411bt.md).
 
 ## Printer naming rule
 
 This rule applies to printers driven through a print queue (everything except
-the direct USB printers above). A print queue is treated as a label printer **only if its name ends in the
-printer's USB `VID:PID`**, separated from the rest of the name by a space, tab,
-`_` or `-`. For example:
+the direct USB printers above). A print queue is treated as a label printer
+**only if its name ends in the printer's USB `VID:PID`**, separated from the
+rest of the name by a space, tab, `_` or `-`. For example:
 
 ```
 DYMO LabelWriter 4XL 0922:0028
@@ -230,7 +231,7 @@ ibp_printing.get_default_printer()      # OS default queue name, or None
 | `PrinterCandidate`, `PrintQueue`, `UsbDevice` | Discovery records. `candidate.reasons()` explains each check. `candidate.transport` is `"direct"` (USB, `candidate.direct_device` set) or `"queue"`. |
 | `save_for_retry(img, name, *, watch_dir=None, meta=None)` | Save a label that could not be printed into `<Downloads>/to-print/` for the label watcher; returns its path. With `meta`, also writes the sidecar `<png>.json` and marks the label `queued` in the journal (see below). |
 | `downloads_dir()` / `to_print_dir(watch_dir=None)` | The (redirection-aware) Downloads folder, and its `to-print` subfolder. |
-| `recipient_key`, `record_purchase`, `update_status`, `find_duplicates`, `pending_labels`, `LabelRecord`, `LabelStatus` | The label journal; see [Duplicate-purchase protection](#duplicate-purchase-protection). |
+| `recipient_key`, `record_purchase`, `update_status`, `find_duplicates`, `pending_labels`, `LabelRecord`, `LabelStatus` | The label journal; see [Label journal](#label-journal). |
 | `get_backend()` / `set_backend(backend)` | Access or replace the backend (`PrinterBackend`), for example with a fake in tests. The default is a `DirectFirstBackend` (direct USB) around the platform backend; a backend passed to `set_backend` replaces both. |
 
 With `track_timeout_s > 0` the Windows backend polls the spooler for the job
@@ -264,24 +265,23 @@ Every non-ok outcome means "the label may or may not come out": tell the user
 to check the printer before reprinting. Never refund or resend automatically;
 `print_to_first_available` never sends such a job to a second printer.
 
-## Duplicate-purchase protection
+## Label journal
 
 When a label can't print, shippy and shippy-gui save it into
-`Downloads\to-print\` and the [label watcher](#label-watcher) prints it later.
-Volunteers then often enter the same shipment again and buy postage a second
-time. `ibp_printing.shipping.labels` (everything is also importable from
-`ibp_printing`) keeps a shared, per-user record of recent labels so the apps
-can warn first:
+`Downloads\to-print\` and the [label watcher](docs/watcher.md) prints it
+later. `ibp_printing.shipping.labels` (`labels` below; everything is also
+importable from `ibp_printing`) keeps a shared, per-user record of recent
+labels and their status, which the apps and the watcher update and the apps
+read to show what is still waiting. `find_duplicates` answers "anything
+recent or still waiting for this recipient?"; shippy and shippy-gui stopped
+asking it before a purchase on 2026-11-19 (the weekly refund job on the IBP
+server refunds unused duplicates).
 
 ```python
 import ibp_printing
 from ibp_printing import LabelStatus
 
 key = ibp_printing.recipient_key(name, street, city, state, zip_code)
-
-# Before buying: anything recent (or still waiting) for this recipient?
-for dup in ibp_printing.find_duplicates(key, within_hours=12):   # newest first
-    print(dup.recipient_label, dup.tracking_code, dup.status, dup.file)
 
 # Right after buying:
 ibp_printing.record_purchase(recipient_key=key, recipient_label="Jane Doe, Huntsville TX",
@@ -301,6 +301,10 @@ ibp_printing.save_for_retry(label, shipment.tracking_code, meta={
 # A UI listing what is waiting for the printer (or for a human):
 for waiting in ibp_printing.pending_labels():   # oldest first
     print(waiting.recipient_label, waiting.status, waiting.file)
+
+# Anything recent (or still waiting) for this recipient?
+for dup in ibp_printing.find_duplicates(key, within_hours=12):   # newest first
+    print(dup.recipient_label, dup.tracking_code, dup.status, dup.file)
 ```
 
 | Name | What it is |
@@ -318,11 +322,8 @@ for waiting in ibp_printing.pending_labels():   # oldest first
 **Sidecars.** `save_for_retry(..., meta={...})` writes `<label>.png.json` (keys
 `tracking_code`, `shipment_id`, `recipient_label`, `recipient_key`, `app`,
 `created`) atomically **before** the PNG appears, so the watcher always sees a
-label's metadata with it. The watcher never prints a `*.json`, moves the sidecar
-along with its label (`printed\`, `check-printer\`, `duplicate_...` names),
-updates the journal (`printed` / `check_printer` / `queued`), and tells the
-volunteer in one information box per pass: "Label for Jane Doe, Huntsville TX
-(tracking 9400...) printed."
+label's metadata with it. What the watcher does with sidecars:
+[docs/watcher.md](docs/watcher.md#who-a-queued-label-is-for-sidecars-and-the-label-journal).
 
 **Storage.** One journal per user: `%LOCALAPPDATA%\ibp-printing\labels.jsonl`
 (Linux: `$XDG_STATE_HOME/ibp-printing/labels.jsonl`, default
@@ -437,19 +438,22 @@ one ID. That lets you follow one label from discovery through each GDI call to
 the spooler's final job status. Records also propagate to the root logger, so
 the host app's own log receives them too.
 
-## Label watcher
+## Releasing
 
-See [docs/watcher.md](docs/watcher.md).
+`main` and `deploy` stay at the same tip. Merge into `main`, then release by
+fast-forwarding `deploy` to it:
 
-## Print server
+```sh
+git fetch origin && git push origin origin/main:deploy
+```
 
-`ibp-print-server` runs on the intake stations (Linux): the IBP frontend posts
-each request label PNG to `http://localhost:40121/print-image` and the server
-prints it on the station's USB label printer through this library. Install it
-with `uv tool install "ibp-printing[linux] @ git+https://github.com/insidebooksproject/printing@deploy"`
-and run it from [`packaging/linux/ibp-print-server.service`](packaging/linux/ibp-print-server.service).
-It upgrades itself from the `deploy` branch on every start.
-HTTP contract, label sizing, setup, releasing and logs: [docs/print-server.md](docs/print-server.md).
+Stations that installed from `deploy` pick it up at the next start of the
+tool: the intake station's `ibp-print-server` unit upgrades on every start
+([docs/print-server.md](docs/print-server.md)), and the kiosk image upgrades
+the watcher and the print server each time they start. Roll back by pushing
+an older commit (`git push --force-with-lease origin <sha>:deploy`) and
+restarting. For shippy and shippy-gui, bump `version` in `pyproject.toml`,
+tag it `vX.Y.Z`, and pin the new tag in each app.
 
 ## Development
 

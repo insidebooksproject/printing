@@ -2,20 +2,23 @@
 
 `ibp-label-watcher` runs on the shipping PC and makes sure every shipping label
 gets printed, even when the label printer was not working at the moment the
-label was bought.
+label was bought. On the Windows shipping laptops it is a logon task (below);
+on the [kiosk](https://github.com/insidebooksproject/kiosk) image it is a
+systemd user service (see that repo's `docs/apps.md`). Message boxes are
+Windows-only: on Linux, what they would say is only in the log.
 
 ## When it is used
 
 **The normal case: the print queue folder.** When shippy or shippy-gui buys a
 label but can't get it to a printer (no printer plugged in, the spooler refused
-the job), they no longer refund the postage. They save the label image into
-`Downloads\to-print\` and tell the volunteer where it went. The watcher checks
-that folder every minute (`retry_seconds`). If the watcher watches some other
-folder (`--watch-dir`), it retries both `<watch folder>\to-print\` and the
-apps' `Downloads\to-print\`, and logs both at startup. As soon as a usable label printer is
-found, it prints the waiting labels, oldest first, and moves each one to
-`Downloads\printed\`. Volunteers do **not** need to download labels from the
-EasyPost website any more; they only need to fix the printer.
+the job), they save the label image into `Downloads\to-print\` and tell the
+volunteer where it went. The watcher checks that folder every minute
+(`retry_seconds`). If the watcher watches some other folder (`--watch-dir`),
+it retries both `<watch folder>\to-print\` and the apps'
+`Downloads\to-print\`, and logs both at startup. As soon as a usable label
+printer is found, it prints the waiting labels, oldest first, and moves each
+one to `Downloads\printed\`. Volunteers do **not** need to download labels
+from the EasyPost website; they only need to fix the printer.
 
 **The manual case: a downloaded label.** The watcher also watches **Downloads**
 itself. If a 4x6 label image or PDF lands there (for example a volunteer
@@ -25,24 +28,19 @@ downloaded one from easypost.com), it prints it the same way.
 > postage is no longer valid. shippy and shippy-gui still refund when something
 > fails *before* a label image exists, and a coordinator may refund by hand. Do
 > not download such a shipment's old label from EasyPost to print it; buy a new
-> one. Likewise, if a label in `to-print\` will never be used, delete the file
-> **and** refund the shipment in EasyPost: the apps did not refund it.
+> one. A label left in `to-print\` needs nothing from the volunteer: the
+> weekly refund job on the IBP server refunds any label USPS never scans,
+> within EasyPost's 30 days.
 
-A supported printer connected for **direct USB printing** (the PM2411BT, see
-the README) needs no print queue; the watcher uses it like any other printer
-through the library. Its outcomes map onto the same folders: "nothing sent"
-(printer busy, cover open, not answering) goes to `to-print\`, and anything
-the printer may have partly printed (paper out, no "done" report, the cover
-opened or closed during the print) goes to `check-printer\`. After a
-paper-out, power-cycle the printer before loading paper.
-
-When the printer's cover is open (or it is still realigning after the cover
-was closed), the label is **not** sent to that printer's Windows print queue
-either: the message box says "Close the label printer's cover." and that the
-label will print automatically once the cover is closed, and the label waits
-in `to-print\` until the next retry finds the printer ready. Likewise, when
-the printer does not answer or does not take the label, the box says to turn
-it off and on again. Other printers (a different model) are still tried.
+A printer on **direct USB** (the PM2411BT, see the README's
+[Direct USB printing](../README.md#direct-usb-printing-pm2411bt)) needs no
+print queue; the watcher uses it like any other printer. "Nothing sent"
+(printer busy, cover open or realigning, not answering) leaves the label in
+`to-print\`, with a box saying to close the cover or to turn the printer off
+and on again; anything the printer may have partly printed (paper out, no
+"done" report, the cover opened or closed during the print) goes to
+`check-printer\`. After a paper-out, power-cycle the printer before loading
+paper.
 
 ## The three folders
 
@@ -96,13 +94,12 @@ The watcher:
   `check-printer\`, `printed\duplicate_...`, `check-printer\duplicate_...`,
   or (for a download that could not print) `to-print\`;
 - **updates the label journal** (`%LOCALAPPDATA%\ibp-printing\labels.jsonl`,
-  shared with the apps, see the README's *Duplicate-purchase protection*),
+  shared with the apps, see the README's [Label journal](../README.md#label-journal)),
   matched by the sidecar's tracking code: `printed` when it lands in
   `printed\`, `check_printer` in `check-printer\`, `queued` while it waits in
   `to-print\`. If the journal has no record of that label yet, one is created
-  from the sidecar. The apps use the journal to warn a volunteer who is about
-  to buy postage again for a shipment whose label is still waiting, may have
-  printed, or printed recently;
+  from the sidecar. The apps read the journal to show which labels are
+  still waiting;
 - **tells the volunteer when a queued label prints**: after each pass through
   `to-print\`, one information box (not a warning, not system-modal) lists
   every label with a sidecar that printed in that pass, e.g. "Label for Jane
@@ -127,12 +124,11 @@ For a new file in **Downloads**:
    folder (OneDrive, a D: drive) still works. It doesn't look inside
    subfolders (except `to-print\`, below).
 2. It ignores files that are still downloading: `.crdownload` (Chrome/Edge),
-   `.part` (Firefox), `.tmp`, `.partial`, and hidden files, and label
-   sidecars (`*.json`). It handles the
-   final file when the browser renames it. A 0-byte file, or one with a
-   `<name>.part`/`<name>.crdownload` sibling, is a browser placeholder: it is
-   skipped at once (status `in_progress`) and handled when the real data
-   arrives.
+   `.part` (Firefox), `.tmp`, `.partial`, hidden files, and label sidecars
+   (`*.json`). It handles the final file when the browser renames it. A
+   0-byte file, or one with a `<name>.part`/`<name>.crdownload` sibling, is a
+   browser placeholder: it is skipped at once (status `in_progress`) and
+   handled when the real data arrives.
 3. It checks the file name against `globs`: PNG, JPG, GIF, BMP or PDF. It skips
    `.zpl` and `.epl` files with a warning, because only images and PDFs can be
    printed. Download the PNG or PDF label instead.
@@ -151,9 +147,9 @@ For a new file in **Downloads**:
    or may have printed is filed away instead of printed, unless its name starts
    with `REPRINT`.
 8. It records the reservation in the state file, then prints with
-   `print_to_first_available` and follows the print job in the spooler for up
-   to 60 seconds. Only a definite failure (the label never reached the spooler)
-   releases the reservation.
+   `print_to_first_available` and follows the print job for up to
+   `track_timeout_s` (60 s). Only a definite failure (the label never reached
+   the spooler) releases the reservation.
 9. It files the label, adding a `YYYYmmdd-HHMMSS_` prefix to the name:
    - printed: `printed\`;
    - definitely not printed (no usable printer, or the spooler refused the job):
@@ -162,11 +158,9 @@ For a new file in **Downloads**:
      `check-printer\`.
 
    A label's `.json` sidecar moves with it, and the label journal records
-   where it went (see *Who a queued label is for*, above).
-   If the file is locked it retries the move a few times. If it still can't be
-   moved, it stays where it is, its reservation says where it belongs, and the
-   move is retried on every retry tick and after restarts; it is never printed
-   again.
+   where it went (see *Who a queued label is for*, above). A file that stays
+   locked is left where it is and only the move is retried (see *Never
+   printed twice*, above).
 10. For anything but a clean print, a warning box (always on top) says what
     happened and where the file went. Only one box is shown at a time; messages
     that arrive while a box is open are shown together in one box when it is
@@ -180,9 +174,9 @@ reservation checks. It does not apply the shape check to to-print files, since
 they were put there on purpose, but logs a warning if one isn't 4x6-shaped. It
 stops the pass at the first printer failure, so a broken printer isn't fed the
 whole queue. When the pass is over, one information box names every label
-with a sidecar that printed in it. A to-print file that stays locked or keeps changing is looked at
-again on the next few ticks, then reported once in a message box and left
-alone until it is renamed or changed.
+with a sidecar that printed in it. A to-print file that stays locked or keeps
+changing is looked at again on the next few ticks, then reported once in a
+message box and left alone until it is renamed or changed.
 
 ### Starting, stopping and crashes
 
@@ -232,10 +226,11 @@ alone until it is renamed or changed.
    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
    ```
 
-2. Install the watcher as a uv tool, straight from GitHub:
+2. Install the watcher as a uv tool from the `deploy` branch (see the
+   README's [Releasing](../README.md#releasing)):
 
    ```powershell
-   uv tool install "ibp-printing[watcher] @ git+https://github.com/insidebooksproject/printing"
+   uv tool install "ibp-printing[watcher] @ git+https://github.com/insidebooksproject/printing@deploy"
    uv tool update-shell
    ```
 
@@ -246,9 +241,8 @@ alone until it is renamed or changed.
    - `ibp-label-watcherw.exe`: windowless version, for normal use. It writes
      only to the log files and shows message boxes.
 
-   To upgrade later, run `uv tool upgrade ibp-printing`. If that doesn't pick
-   up new commits, run
-   `uv tool install --force "ibp-printing[watcher] @ git+https://github.com/insidebooksproject/printing"`.
+   To upgrade later, run `uv tool upgrade ibp-printing`, which re-resolves
+   `deploy`; `uv tool install --force` with the same spec reinstalls.
 
 3. Enable the PrintService Operational event log. This is a one-time step and
    must be run as administrator. Windows turns this log off by default, and
@@ -396,20 +390,10 @@ starts an escape sequence.
 
 ## Logs
 
-Logs are written to `%LOCALAPPDATA%\ibp-printing\logs\` (Linux:
-`~/.local/state/ibp-printing/logs/`). Each program has its own pair of files in
-that folder, so they never fight over rotating a shared file:
-
-- `printer-watcher.log` / `printer-watcher.jsonl`: this watcher.
-- `printer-shippy.log`, `printer-shippy-gui.log`, `printer-diag.log` (and
-  `.jsonl`): the other programs that use `ibp-printing`.
-
-The `.log` file is human-readable. Each line looks like
-`time level [attempt-id] thread logger: message | key=value ...`. The `.jsonl`
-file has the same records, one JSON object per line. Both rotate at 5 MB and
-keep 20 old copies.
-
-What gets logged:
+The watcher writes `printer-watcher.log` / `printer-watcher.jsonl` in the
+shared log folder (`%LOCALAPPDATA%\ibp-printing\logs\`; Linux:
+`~/.local/state/ibp-printing/logs/`); location, format and rotation are in
+the README's [Logs](../README.md#logs). What gets logged:
 
 - **Startup**: version, command line, config file path, lock and state file
   locations, warnings about the config, the effective config, what the state
@@ -494,10 +478,9 @@ Outcomes you'll see in `file outcome: ...` lines (Downloads) and
 | `not_matching` | File name doesn't match `globs`. | no |
 | `unsupported` | ZPL/EPL, a corrupt image, or a PDF that couldn't be rendered. | no |
 
-## Developing on Linux
+## Trying it on Linux without a printer
 
-Everything except actual Windows printing runs on Linux, which is useful with
-`--dry-run`:
+With `--dry-run` nothing is printed or moved:
 
 ```sh
 uv sync --extra watcher
@@ -513,8 +496,8 @@ Without pycups, the Linux backend uses `lpstat -p` and `lp`, so a fake printer i
 two small shell scripts early on `PATH`: `lpstat` printing
 `printer Fake_Label_VVVV:PPPP is idle.`, and `lp` copying its last argument somewhere
 (exit 1 to simulate a dead printer). Use the `VVVV:PPPP` of any USB device
-that is plugged in (`lsusb`): a queue is only usable while its device is. Set `XDG_STATE_HOME` to a scratch folder
-to keep the test's state file and label journal apart. Note that the watcher also retries the
-apps' queue, `~/Downloads/to-print`, when you watch another folder.
-
-Run the tests with `uv run python -m unittest discover -s tests`.
+that is plugged in (`lsusb`): a queue is only usable while its device is.
+Set `XDG_STATE_HOME` to a scratch folder
+to keep the test's state file and label journal apart. Note that the
+watcher also retries the apps' queue, `~/Downloads/to-print`, when you watch
+another folder.
