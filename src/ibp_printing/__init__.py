@@ -31,10 +31,12 @@ from ibp_printing.models import (
     PrintResult,
     UsbDevice,
 )
+from ibp_printing.printers import LabelRole
 
 __all__ = [
     "Discovery",
     "JobOutcome",
+    "LabelRole",
     "LabelRecord",
     "LabelStatus",
     "PrintError",

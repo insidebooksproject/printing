@@ -4,7 +4,14 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
-from ibp_printing.printers import MODELS, direct_model_for_mdl
+from ibp_printing.printers import (
+    MODELS,
+    LabelRole,
+    PrinterModel,
+    direct_model_for_mdl,
+    model_for_mdl,
+    model_for_vid_pid,
+)
 from ibp_printing.winconst import (
     PRINTER_ATTRIBUTE_BITS,
     PRINTER_ATTRIBUTE_WORK_OFFLINE,
@@ -147,6 +154,29 @@ class PrinterCandidate:
         return self.direct_device is not None
 
     @property
+    def model(self) -> Optional[PrinterModel]:
+        """The known printer model (by 1284 model, else VID:PID), or None."""
+        if self.direct_device is not None:
+            found = model_for_mdl(self.direct_device.model)
+            if found is not None:
+                return found
+        return model_for_vid_pid(self.vid_pid)
+
+    @property
+    def role(self) -> Optional[LabelRole]:
+        """The labels this printer is for; None when it is not a known model."""
+        model = self.model
+        return model.role if model is not None else None
+
+    def prints(self, label: Optional[LabelRole]) -> bool:
+        """False only when this is a known printer for other labels.
+
+        A queue for an unknown printer (no known VID:PID) may print anything.
+        """
+        role = self.role
+        return label is None or role is None or role is label
+
+    @property
     def connected_devices(self) -> tuple[UsbDevice, ...]:
         """Matching USB entities that are actually plugged in (not ghosts)."""
         return tuple(device for device in self.usb_devices if device.connected)
@@ -270,6 +300,7 @@ class PrinterCandidate:
             "queued_jobs": self.queue.jobs,
             "is_default": self.queue.is_default,
             "vid_pid": self.vid_pid,
+            "role": self.role.value if self.role is not None else None,
             "usable": self.usable,
             "reasons": self.reasons(),
             "usb_devices": [asdict(device) for device in self.usb_devices],

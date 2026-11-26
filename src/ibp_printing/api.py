@@ -2,7 +2,7 @@
 
 import logging
 import threading
-from typing import Optional
+from typing import Optional, Union
 
 from PIL import Image
 
@@ -20,6 +20,7 @@ from ibp_printing.log import (
     log_event,
 )
 from ibp_printing.models import Discovery, PrinterCandidate, PrintResult
+from ibp_printing.printers import LabelRole, parse_role
 from ibp_printing.render import describe_image
 
 logger = get_logger(__name__)
@@ -109,8 +110,17 @@ def print_to_first_available(
     *,
     job_name: Optional[str] = None,
     track_timeout_s: float = 0.0,
+    label: Union[LabelRole, str, None] = None,
 ) -> PrintResult:
     """Print to the best usable label printer, falling back to the next one.
+
+    ``label`` (``"shipping"`` for 4x6 postage labels, ``"package"`` for the
+    small package labels, or a :class:`~ibp_printing.printers.LabelRole`)
+    leaves out the known printers that are for the other kind
+    (:mod:`ibp_printing.printers`): a PM2411BT never gets a package label,
+    an SP310 or a DYMO LabelWriter 450 never gets a 4x6. Queues for printers
+    that are not known models are still tried. None (the default) tries every
+    printer, as before.
 
     Fallback only happens on PrintError, which the backends raise only when
     the job definitely never reached the spooler (or the direct USB printer,
@@ -131,10 +141,16 @@ def print_to_first_available(
     Raises:
         PrintError: if no printer is usable or every printer definitely failed
             to spool.
+        ValueError: for an unknown ``label``.
     """
-    with attempt("print_to_first_available", image=describe_image(img)):
+    role = parse_role(label)
+    with attempt(
+        "print_to_first_available",
+        image=describe_image(img),
+        label_role=role.value if role is not None else None,
+    ):
         discovery = discover()
-        usable = discovery.usable
+        usable = _for_label(discovery.usable, role)
         if not usable:
             log_event(
                 logger,
@@ -194,19 +210,61 @@ def print_to_first_available(
             _log_result(result)
             return result
 
-        if first_block is not None:
-            others = [
-                line
-                for line in failures
-                if not line.endswith(("(same printer)", f": {first_block}"))
-            ]
-            message = str(first_block)
-            if others:
-                message += " Other printers also failed: " + "; ".join(others)
-            raise PrintError(message, reason=first_block.reason)
+        raise _every_printer_failed(failures, first_block)
+
+
+def _every_printer_failed(
+    failures: list[str], first_block: Optional[PrintError]
+) -> PrintError:
+    """The error once no printer took the job (``first_block`` first if any)."""
+    if first_block is not None:
+        others = [
+            line
+            for line in failures
+            if not line.endswith(("(same printer)", f": {first_block}"))
+        ]
+        message = str(first_block)
+        if others:
+            message += " Other printers also failed: " + "; ".join(others)
+        return PrintError(message, reason=first_block.reason)
+    return PrintError(
+        "Every label printer failed: " + "; ".join(failures), reason="all_failed"
+    )
+
+
+def _for_label(
+    usable: list[PrinterCandidate], role: Optional[LabelRole]
+) -> list[PrinterCandidate]:
+    """``usable`` without the known printers for other labels (logged).
+
+    Raises:
+        PrintError: (``no_printer_for_label``) when every usable printer is
+            for other labels.
+    """
+    if role is None:
+        return usable
+    kept = [candidate for candidate in usable if candidate.prints(role)]
+    skipped = [candidate for candidate in usable if not candidate.prints(role)]
+    if skipped and not kept:
         raise PrintError(
-            "Every label printer failed: " + "; ".join(failures), reason="all_failed"
+            f"No printer for {role.value} labels found plugged in (only "
+            + ", ".join(candidate.name for candidate in skipped)
+            + ").",
+            reason="no_printer_for_label",
         )
+    if skipped:
+        log_event(
+            logger,
+            logging.INFO,
+            f"leaving out printers that are not for {role.value} labels",
+            label=role.value,
+            skipped=[
+                {"name": c.name, "role": c.role.value if c.role else None}
+                for c in skipped
+            ],
+            kept=[candidate.name for candidate in kept],
+        )
+    return kept
 
 
 def _log_result(result: PrintResult) -> None:
