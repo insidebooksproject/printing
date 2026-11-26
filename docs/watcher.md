@@ -492,11 +492,9 @@ python -c "from PIL import Image; Image.new('L', (1200, 1800), 255).save('/tmp/d
 python -c "import ibp_printing; from pathlib import Path; from PIL import Image; ibp_printing.save_for_retry(Image.new('L', (1200, 1800), 255), 'TEST123', watch_dir=Path('/tmp/dl'))"
 ```
 
-Without pycups, the Linux backend uses `lpstat -p` and `lp`, so a fake printer is
-two small shell scripts early on `PATH`: `lpstat` printing
-`printer Fake_Label_VVVV:PPPP is idle.`, and `lp` copying its last argument somewhere
-(exit 1 to simulate a dead printer). Use the `VVVV:PPPP` of any USB device
-that is plugged in (`lsusb`): a queue is only usable while its device is.
+Linux has no print queues, only the direct USB printers, so without a
+PM2411BT plugged in every label stays queued in `to-print` (which is what
+the no-printer path should do); plug one in to test printing.
 Set `XDG_STATE_HOME` to a scratch folder
 to keep the test's state file and label journal apart. Note that the
 watcher also retries the apps' queue, `~/Downloads/to-print`, when you watch

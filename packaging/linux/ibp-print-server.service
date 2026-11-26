@@ -15,8 +15,8 @@
 # (no network).
 [Unit]
 Description=IBP label print server
-After=cups.service network-online.target
-Wants=cups.service network-online.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple

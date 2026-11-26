@@ -48,12 +48,14 @@ then the station itself.
   answers `0x01` (ready, part way through a label), and `ESC E` feeds the
   part label out, back to `0x03`. The pre-check does both by itself, so the
   next label prints whole and aligned (tested).
-- **CUPS and the device:** every CUPS job, `lpinfo -v` (also the printer
-  settings dialog) and a replug (CUPS probes the new device) unbind usblp
-  briefly (`usblp1: removed` in the kernel log), so `/dev/usb/lp1`
-  disappears. A direct print running at that moment is cut off (`DeviceGone`,
-  `UNCERTAIN`); the next print recovers as above. A replug also re-enables
-  the CUPS queue (`udev-configure-printer`).
+- **CUPS and the device** (while a CUPS queue for it is still installed):
+  every CUPS job, `lpinfo -v` (also the printer settings dialog) and a
+  replug (CUPS probes the new device) unbind usblp briefly (`usblp1:
+  removed` in the kernel log), so `/dev/usb/lp1` disappears. A direct print
+  running at that moment is cut off (`DeviceGone`, `UNCERTAIN`); the next
+  print recovers as above. A replug also re-enables the CUPS queue
+  (`udev-configure-printer`). ibp-printing itself no longer uses CUPS
+  (dropped 2026-11-26).
 
 ## The job
 
@@ -110,14 +112,15 @@ label's edge.
    sudo systemctl daemon-reload && sudo systemctl restart ibp-print-server
    ```
 
-2. Leave the CUPS queue enabled: it is the fallback when the printer cannot
-   be opened, and what the frontend's label-PDF fallback prints through.
+2. The CUPS queue is no longer used by the print server. Keep it only for
+   printing the frontend's label-PDF fallback from the browser.
 3. Check: `ibp-print-diag` lists `LabelWriter 450 Turbo [USB direct]`, ready
    `0x03`; print one label from the frontend; the log shows
    `direct USB print result ... completed`.
 
-Rollback: `Environment=IBP_PRINTING_DIRECT=0` in a drop-in (direct USB
-printing off, everything goes to CUPS as before), `daemon-reload`, restart.
+Rollback: there is no CUPS path any more, so `IBP_PRINTING_DIRECT=0` only
+stops printing. Revert the change on `main` and fast-forward `deploy`, then
+restart the service (it upgrades on start).
 
 ## Still to check
 

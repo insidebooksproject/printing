@@ -171,7 +171,7 @@ def busy_text(device: DirectDevice) -> str:
     """Why a busy device could not be opened, for the report."""
     if device.kind == "usbprint":
         return "BUSY: another program or the Windows print queue has it open"
-    return "BUSY: another program (e.g. CUPS) has it open"
+    return "BUSY: another program (e.g. the spooler or CUPS) has it open"
 
 
 def open_problem(device: DirectDevice) -> str:

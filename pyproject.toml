@@ -14,9 +14,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-linux = [
-    "pycups>=2.0.4",
-]
+# Was pycups (CUPS, dropped 2026-11-26); kept empty so existing
+# "ibp-printing[linux]" installs and dependents still resolve.
+linux = []
 watcher = [
     "watchdog>=6.0.0",
     "pypdfium2>=4.30.0",
