@@ -1,6 +1,6 @@
 [project]
 name = "ibp-printing"
-version = "0.1.1"
+version = "0.5.0"
 description = "Shared USB label-printer discovery, printing, and diagnostics for IBP shipping tools"
 readme = "README.md"
 authors = [
@@ -14,20 +14,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-linux = [
-    "pycups>=2.0.4",
-]
+# Was pycups (CUPS, dropped 2026-11-26); kept empty so existing
+# "ibp-printing[linux]" installs and dependents still resolve.
+linux = []
 watcher = [
     "watchdog>=6.0.0",
     "pypdfium2>=4.30.0",
 ]
 
 [project.scripts]
-ibp-print-diag = "ibp_printing.diagnostics:main"
-ibp-label-watcher = "ibp_printing.watcher.__main__:main"
+ibp-print-diag = "ibp_printing.apps.diag:main"
+ibp-label-watcher = "ibp_printing.apps.watcher.__main__:main"
+ibp-print-server = "ibp_printing.apps.server:main"
 
 [project.gui-scripts]
-ibp-label-watcherw = "ibp_printing.watcher.__main__:main"
+ibp-label-watcherw = "ibp_printing.apps.watcher.__main__:main"
 
 [dependency-groups]
 dev = [

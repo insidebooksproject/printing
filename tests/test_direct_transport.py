@@ -123,6 +123,25 @@ class FakeTransportTests(unittest.TestCase):
         fake.queue_raw(b"ING:DOING\r\n")
         self.assertEqual(fake.read_lines(0.1), ["SSSGETPRINTING:DOING"])
 
+    def test_raw_replies_and_read_bytes(self):
+        fake = FakeTransport()
+        statuses = iter([b"\x20", b"\x00"])
+        fake.add_raw_reply(b"\x1b!?", lambda: next(statuses))
+        self.assertEqual(fake.read_bytes(0.1), b"")
+        fake.write_all(b"\x1b!?", 1.0)
+        self.assertEqual(fake.read_bytes(0.1), b"\x20")
+        fake.write_all(b"\x1b!?x", 1.0)  # not exactly the query: no reply
+        self.assertEqual(fake.read_bytes(0.1), b"")
+        fake.write_all(b"\x1b!?", 1.0)
+        self.assertEqual(fake.read_bytes(0.1), b"\x00")
+
+    def test_read_bytes_returns_a_buffered_partial_line(self):
+        fake = FakeTransport()
+        fake.queue_raw(b"AB\r\nC")
+        self.assertEqual(fake.read_lines(0.1), ["AB"])
+        fake.queue_raw(b"\x00")
+        self.assertEqual(fake.read_bytes(0.1), b"C\x00")
+
     def test_scheduled_lines(self):
         fake = FakeTransport()
         fake.queue_after_reads(2, "SSSGETPRINTING:DONE")
@@ -220,6 +239,16 @@ class LinuxTransportTests(unittest.TestCase):
         elapsed = time.monotonic() - started
         self.assertGreaterEqual(elapsed, 0.25)
         self.assertLess(elapsed, 2.0)
+
+    def test_read_bytes(self):
+        self.peer.sendall(b"\x40")
+        self.assertEqual(self.transport.read_bytes(1.0), b"\x40")
+        started = time.monotonic()
+        self.assertEqual(self.transport.read_bytes(0.3), b"")
+        self.assertGreaterEqual(time.monotonic() - started, 0.25)
+        self.peer.sendall(b"LINE\r\nPART")
+        self.assertEqual(self.transport.read_lines(1.0), ["LINE"])
+        self.assertEqual(self.transport.read_bytes(0.5), b"PART")
 
     def test_zero_timeout_returns_available(self):
         self.peer.sendall(b"A\r\nB\r\n")
@@ -324,14 +353,30 @@ class LinuxOpenErrorTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "not_found")
 
 
-def make_fake_sysfs(root: Path, dev_root: Path, *, serial: Optional[str]) -> None:
+# As the intake station's LabelWriter 450 Turbo reports it (2026-11-26).
+DYMO_1284 = (
+    "MFG:DYMO;CMD: ;MDL:LabelWriter 450 Turbo;CLASS:PRINTER;"
+    "DESCRIPTION:DYMO LabelWriter 450 Turbo;SERN:18073014353381;"
+)
+# A printer the direct path does not drive (only ever on its queue).
+DYMO_4XL_1284 = "MFG:DYMO;CMD: ;MDL:LabelWriter 4XL;CLASS:PRINTER;"
+
+
+def make_fake_sysfs(
+    root: Path,
+    dev_root: Path,
+    *,
+    serial: Optional[str],
+    ieee1284: str = PM_1284,
+    vid_pid: tuple[str, str] = ("2e3c", "5760"),
+) -> None:
     """``/sys/class/usbmisc/lp0`` -> interface 3-9:1.0 under USB device 3-9."""
     usb_device = root / "devices" / "pci0000:00" / "usb3" / "3-9"
     interface = usb_device / "3-9:1.0"
     interface.mkdir(parents=True)
-    (interface / "ieee1284_id").write_text(PM_1284, encoding="latin-1")
-    (usb_device / "idVendor").write_text("2e3c\n")
-    (usb_device / "idProduct").write_text("5760\n")
+    (interface / "ieee1284_id").write_text(ieee1284, encoding="latin-1")
+    (usb_device / "idVendor").write_text(vid_pid[0] + "\n")
+    (usb_device / "idProduct").write_text(vid_pid[1] + "\n")
     if serial is not None:
         (usb_device / "serial").write_text(serial + "\n")
     (usb_device / "manufacturer").write_text("PM\n")
@@ -380,6 +425,38 @@ class LinuxDiscoveryTests(unittest.TestCase):
 
     def test_no_usbmisc(self):
         self.assertEqual(tr.discover_linux_usblp(self.root, self.root), [])
+
+    def unreadable_node(self, **kwargs) -> None:
+        """A fake sysfs whose /dev/usb/lp0 this user cannot open."""
+        make_fake_sysfs(self.root / "sys", self.root / "dev", serial=None, **kwargs)
+        node = self.root / "dev" / "usb" / "lp0"
+        node.chmod(0)
+        self.addCleanup(node.chmod, 0o600)
+        if os.access(node, os.R_OK | os.W_OK):
+            self.skipTest("running as root: permissions are not enforced")
+
+    def test_no_access_to_a_supported_printer_warns(self):
+        self.unreadable_node()
+        with self.assertLogs("ibp_printing", level="WARNING") as logs:
+            device = tr.discover_linux_usblp(self.root / "sys", self.root / "dev")[0]
+        self.assertIs(device.accessible, False)
+        self.assertIn("install the udev rule", logs.output[0])
+
+    def test_no_access_to_another_printer_is_not_a_warning(self):
+        # A DYMO 4XL on its CUPS queue: the direct path never opens it.
+        self.unreadable_node(ieee1284=DYMO_4XL_1284, vid_pid=("0922", "0028"))
+        with self.assertNoLogs("ibp_printing", level="INFO"):
+            device = tr.discover_linux_usblp(self.root / "sys", self.root / "dev")[0]
+        self.assertIs(device.accessible, False)
+        self.assertEqual(device.model, "LabelWriter 4XL")
+
+    def test_no_access_to_the_labelwriter_450_warns(self):
+        self.unreadable_node(ieee1284=DYMO_1284, vid_pid=("0922", "0021"))
+        with self.assertLogs("ibp_printing", level="WARNING") as logs:
+            device = tr.discover_linux_usblp(self.root / "sys", self.root / "dev")[0]
+        self.assertIs(device.accessible, False)
+        self.assertEqual(device.model, "LabelWriter 450 Turbo")
+        self.assertIn("install the udev rule", logs.output[0])
 
     def test_open_transport_dispatch(self):
         device = DirectDevice(path=str(self.root / "missing"), kind="usblp")
@@ -675,6 +752,14 @@ class WindowsTransportLogicTests(unittest.TestCase):
         self.assertGreaterEqual(self.api.cancels, 1)
         self.api.incoming = [b"ING\r\n"]
         self.assertEqual(self.transport.read_lines(1.0), ["SSSGETPRINTING:DOING"])
+
+    def test_read_bytes_and_timeout(self):
+        self.api.incoming = [b"\x20"]
+        self.assertEqual(self.transport.read_bytes(1.0), b"\x20")
+        self.assertEqual(self.transport.read_bytes(0.1), b"")  # pends, cancelled
+        self.api.incoming = [b"A\r\nB"]
+        self.assertEqual(self.transport.read_lines(1.0), ["A"])
+        self.assertEqual(self.transport.read_bytes(0.1), b"B")
 
     def test_events_closed(self):
         self.api.incoming = [b"A\r\n"]

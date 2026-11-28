@@ -1,0 +1,23 @@
+# Restarts ibp-print-server after the station wakes from suspend, so it
+# upgrades from the `deploy` branch then too. Closing an intake laptop's lid
+# suspends it rather than shutting it down, so without this the server can go
+# weeks without a start (and without an upgrade).
+#
+# Install next to ibp-print-server.service (see docs/print-server.md):
+#   sudo install -m 0644 ibp-print-server-resume.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable ibp-print-server-resume
+#
+# Waits up to a minute for the network first so the upgrade can reach
+# GitHub; the "-" restarts anyway if it never comes up.
+[Unit]
+Description=Restart the IBP label print server after resume
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+ExecStartPre=-/usr/bin/nm-online -q -t 60
+ExecStart=/usr/bin/systemctl --no-block restart ibp-print-server.service
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target

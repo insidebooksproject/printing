@@ -4,6 +4,14 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
+from ibp_printing.printers import (
+    MODELS,
+    LabelRole,
+    PrinterModel,
+    direct_model_for_mdl,
+    model_for_mdl,
+    model_for_vid_pid,
+)
 from ibp_printing.winconst import (
     PRINTER_ATTRIBUTE_BITS,
     PRINTER_ATTRIBUTE_WORK_OFFLINE,
@@ -15,10 +23,12 @@ from ibp_printing.winconst import (
 if TYPE_CHECKING:
     from ibp_printing.direct.transport import DirectDevice
 
-# Printers the direct-USB path can drive, by IEEE 1284 MDL (case-insensitive).
-# Matching is by model, never by VID:PID alone: the PM2411BT's VID (Artery,
-# 2E3C) is shared by many unrelated devices.
-SUPPORTED_DIRECT_MODELS = frozenset({"PM2411BT"})
+# Printers the direct-USB path can drive, by IEEE 1284 MDL (case-insensitive;
+# see ibp_printing.printers). Matching is by model, never by VID:PID alone:
+# the PM2411BT's VID (Artery, 2E3C) is shared by many unrelated devices.
+SUPPORTED_DIRECT_MODELS = frozenset(
+    mdl for model in MODELS if model.direct for mdl in model.mdl
+)
 
 # Direct candidates are named "<model> (USB direct, serial <serial>)".
 DIRECT_NAME_MARK = "(USB direct"
@@ -31,7 +41,7 @@ UDEV_RULE_HINT = (
 
 def is_supported_direct_model(model: str) -> bool:
     """True if ``model`` (a 1284 MDL) is a printer the direct path supports."""
-    return model.strip().upper() in SUPPORTED_DIRECT_MODELS
+    return direct_model_for_mdl(model) is not None
 
 
 @dataclass(frozen=True)
@@ -121,7 +131,7 @@ class PrinterCandidate:
     queue: PrintQueue
     vid_pid: Optional[str]
     usb_devices: tuple[UsbDevice, ...] = ()
-    # Platforms without USB matching (CUPS) treat every queue as usable.
+    # Backends without USB matching treat every queue as usable.
     usb_matching: bool = True
     # The USB device a direct candidate prints to (None for a queue).
     direct_device: Optional["DirectDevice"] = field(default=None, compare=False)
@@ -142,6 +152,29 @@ class PrinterCandidate:
     def is_direct(self) -> bool:
         """True for a printer driven directly over USB."""
         return self.direct_device is not None
+
+    @property
+    def model(self) -> Optional[PrinterModel]:
+        """The known printer model (by 1284 model, else VID:PID), or None."""
+        if self.direct_device is not None:
+            found = model_for_mdl(self.direct_device.model)
+            if found is not None:
+                return found
+        return model_for_vid_pid(self.vid_pid)
+
+    @property
+    def role(self) -> Optional[LabelRole]:
+        """The labels this printer is for; None when it is not a known model."""
+        model = self.model
+        return model.role if model is not None else None
+
+    def prints(self, label: Optional[LabelRole]) -> bool:
+        """False only when this is a known printer for other labels.
+
+        A queue for an unknown printer (no known VID:PID) may print anything.
+        """
+        role = self.role
+        return label is None or role is None or role is label
 
     @property
     def connected_devices(self) -> tuple[UsbDevice, ...]:
@@ -267,6 +300,7 @@ class PrinterCandidate:
             "queued_jobs": self.queue.jobs,
             "is_default": self.queue.is_default,
             "vid_pid": self.vid_pid,
+            "role": self.role.value if self.role is not None else None,
             "usable": self.usable,
             "reasons": self.reasons(),
             "usb_devices": [asdict(device) for device in self.usb_devices],
@@ -342,13 +376,38 @@ class JobOutcome(str, Enum):
         }
 
 
+class JobState(str, Enum):
+    """Where a queued job stands, as far as following it is concerned.
+
+    Each backend maps its own job status onto this (Windows ``JOB_STATUS_*``
+    bits); :func:`ibp_printing.jobs.track_job` only ever
+    looks at the state.
+    """
+
+    # Still in the queue with nothing wrong: queued, spooling, held or printing.
+    ACTIVE = "active"
+    # Stuck (paper out, offline, ...): it may recover.
+    ERROR = "error"
+    # Being deleted or cancelled.
+    DELETED = "deleted"
+    # The spooler says it printed.
+    DONE = "done"
+
+
 @dataclass(frozen=True)
 class JobSnapshot:
-    """One observation of a job in the spooler queue."""
+    """One observation of a job in the spooler queue.
+
+    ``flags`` are the platform's own names for the job's status (``SPOOLING``,
+    ``PAPEROUT``, ... on Windows),
+    recorded in the result history and logs. A new history entry is made
+    whenever ``state`` or ``flags`` change.
+    """
 
     job_id: int
     document: str
-    status: int
+    state: JobState
+    flags: tuple[str, ...] = ()
     status_text: str = ""
     pages_printed: int = 0
     total_pages: int = 0

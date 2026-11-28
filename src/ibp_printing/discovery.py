@@ -10,8 +10,8 @@ ranking, never visibility, so a misbehaving printer still shows up in the logs.
 
 Direct USB devices (``ibp_printing.direct``) become candidates of their own
 (:func:`direct_candidates`, merged by :func:`merge_direct`): a supported model
-(by IEEE 1284 MDL) or anything with the PM2411BT's VID:PID, so diagnostics can
-explain an unrecognised one. They rank ahead of queues. A queue whose VID:PID
+(by IEEE 1284 MDL) or anything with a supported model's VID:PID, so diagnostics
+can explain an unrecognised one. They rank ahead of queues. A queue whose VID:PID
 matches a usable direct device is kept (as the fallback) with a note.
 """
 
@@ -27,13 +27,14 @@ from ibp_printing.models import (
     UsbDevice,
     is_supported_direct_model,
 )
+from ibp_printing.printers import PM2411BT, direct_vid_pids
 
 if TYPE_CHECKING:
     from ibp_printing.direct.transport import DirectDevice
 
 # The PM2411BT's USB VID:PID (shared by other Artery-based devices, so only
 # used to decide which unrecognised devices are worth explaining).
-PM2411BT_VID_PID = "2E3C:5760"
+PM2411BT_VID_PID = PM2411BT.vid_pid
 DIRECT_DRIVER = "(none: direct USB)"
 
 NAME_VID_PID_PATTERN = re.compile(r"(?:^|[\s_\-])([0-9A-Fa-f]{4}):([0-9A-Fa-f]{4})$")
@@ -102,13 +103,11 @@ def is_direct_name(name: str) -> bool:
 
 
 def direct_candidates(devices: Iterable["DirectDevice"]) -> list[PrinterCandidate]:
-    """Candidates for supported models and PM2411BT-VID:PID devices."""
+    """Candidates for supported models and devices with a supported VID:PID."""
     candidates = []
+    vid_pids = direct_vid_pids()
     for device in devices:
-        if not (
-            is_supported_direct_model(device.model)
-            or device.vid_pid == PM2411BT_VID_PID
-        ):
+        if not (is_supported_direct_model(device.model) or device.vid_pid in vid_pids):
             continue
         queue = PrintQueue(
             name=direct_candidate_name(device), port=device.path, driver=DIRECT_DRIVER

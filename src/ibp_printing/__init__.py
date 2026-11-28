@@ -12,7 +12,7 @@ from ibp_printing.api import (
     set_direct_enabled,
 )
 from ibp_printing.backends import PrinterBackend, PrintError
-from ibp_printing.labels import (
+from ibp_printing.shipping.labels import (
     LabelRecord,
     LabelStatus,
     find_duplicates,
@@ -21,8 +21,15 @@ from ibp_printing.labels import (
     record_purchase,
     update_status,
 )
-from ibp_printing.log import configure_logging, default_log_dir, log_file_names, quiet
-from ibp_printing.paths import downloads_dir, save_for_retry, to_print_dir
+from ibp_printing.log import (
+    configure_error_log,
+    configure_logging,
+    default_log_dir,
+    error_log_file_name,
+    log_file_names,
+    quiet,
+)
+from ibp_printing.shipping.paths import downloads_dir, save_for_retry, to_print_dir
 from ibp_printing.models import (
     Discovery,
     JobOutcome,
@@ -31,10 +38,12 @@ from ibp_printing.models import (
     PrintResult,
     UsbDevice,
 )
+from ibp_printing.printers import LabelRole
 
 __all__ = [
     "Discovery",
     "JobOutcome",
+    "LabelRole",
     "LabelRecord",
     "LabelStatus",
     "PrintError",
@@ -43,11 +52,13 @@ __all__ = [
     "PrinterBackend",
     "PrinterCandidate",
     "UsbDevice",
+    "configure_error_log",
     "configure_logging",
     "default_log_dir",
     "direct_enabled",
     "discover",
     "downloads_dir",
+    "error_log_file_name",
     "find_duplicates",
     "find_label_printers",
     "get_backend",

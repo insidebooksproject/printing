@@ -1,9 +1,9 @@
 """Label metadata sidecars in the watcher: carried along, reported to the journal.
 
-A label saved by :func:`ibp_printing.paths.save_for_retry` with metadata has a
+A label saved by :func:`ibp_printing.shipping.paths.save_for_retry` with metadata has a
 sidecar ``<label>.png.json``. The watcher never prints it; whenever it moves a
 label, the sidecar goes along, and the label journal
-(:mod:`ibp_printing.labels`) records where the label went, matched by the
+(:mod:`ibp_printing.shipping.labels`) records where the label went, matched by the
 sidecar's tracking code.
 """
 
@@ -11,9 +11,9 @@ import logging
 import os
 from pathlib import Path
 
-from ibp_printing import labels
+from ibp_printing.shipping import labels
 from ibp_printing.log import describe_exception, get_logger, log_event
-from ibp_printing.paths import (
+from ibp_printing.shipping.paths import (
     CHECK_PRINTER_DIR,
     PRINTED_DIR,
     TO_PRINT_DIR,

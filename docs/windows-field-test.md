@@ -1,5 +1,11 @@
 # Windows field test: direct USB printing (PM2411BT)
 
+> **Status: finished (2026-11).** PM2411BT direct USB printing field-tested OK
+> on the shipping laptops; released in v0.2.0. Kept as a checklist for
+> another Windows PC: to repeat it, use `@deploy` instead of the pinned
+> commit, and in Step 4 shippy-gui's `@deploy` (the `refactor/use-ibp-printing`
+> branch is gone). The individual results were not recorded here.
+
 > Tests ibp-printing commit `2406c4a` (`2406c4ae84f32ed2901e0758c1ec5779cc1e4ce8`, branch `feat/direct-usb`).
 > Every command below is pinned to it, so the code cannot change under you.
 
@@ -18,7 +24,7 @@ IBP shipping app works.** The test code runs from one fixed commit of the
   makes a `diag` shortcut and a results folder, for this window only:
 
 ```powershell
-function diag { uvx --from "git+https://github.com/jonkensta/ibp-printing@2406c4ae84f32ed2901e0758c1ec5779cc1e4ce8" ibp-print-diag @args }
+function diag { uvx --from "git+https://github.com/insidebooksproject/printing@2406c4ae84f32ed2901e0758c1ec5779cc1e4ce8" ibp-print-diag @args }
 New-Item -ItemType Directory -Force "$HOME\Desktop\ibp-test" | Out-Null
 ```
 
@@ -106,7 +112,7 @@ and no `[direct USB]` under *Verdict*. Do not print in this step.
 shippy-gui has no test or preview mode, so **do not create a label**; we will
 do a real-label test together. You may only *look*: in the folder the IBP
 shortcut starts in (shortcut > Properties > *Start in*), run
-`uvx --from "git+https://github.com/jonkensta/shippy-gui.git@refactor/use-ibp-printing" shippy-gui`,
+`uvx --from "git+https://github.com/insidebooksproject/shippy-gui.git@refactor/use-ibp-printing" shippy-gui`,
 check the printer list shows `PM2411BT (USB direct, ...)`, then quit
 (Ctrl+Q) **without** clicking *Create Label*.
 

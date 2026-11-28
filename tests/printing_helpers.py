@@ -24,6 +24,11 @@ def reset_logging() -> None:
     for handler in list(package_logger.handlers):
         package_logger.removeHandler(handler)
         handler.close()
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        if isinstance(handler, ibp_log.SafeRotatingFileHandler):
+            root_logger.removeHandler(handler)
+            handler.close()
     ibp_log._CONFIGURED_DIRS.clear()  # pylint: disable=protected-access
 
 

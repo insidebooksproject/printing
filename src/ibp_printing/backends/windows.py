@@ -14,7 +14,7 @@ from PIL import Image
 
 from ibp_printing.backends.base import PrinterBackend, PrintError
 from ibp_printing.discovery import discovery_from, vid_pid_from_device_id
-from ibp_printing.jobs import track_job
+from ibp_printing.jobs import track_job, tracking_failed
 from ibp_printing.log import (
     describe_exception,
     exception_summary,
@@ -27,6 +27,7 @@ from ibp_printing.models import (
     Discovery,
     JobOutcome,
     JobSnapshot,
+    JobState,
     PrintQueue,
     PrintResult,
     UsbDevice,
@@ -42,6 +43,9 @@ from ibp_printing.winconst import (
     DEVCAP_PHYSICALWIDTH,
     DEVCAP_VERTRES,
     JOB_STATUS_BITS,
+    JOB_STATUS_DELETED_MASK,
+    JOB_STATUS_DONE_MASK,
+    JOB_STATUS_ERROR_MASK,
     PRINTER_ATTRIBUTE_BITS,
     PRINTER_STATUS_BITS,
     decode_bits,
@@ -293,17 +297,7 @@ class WindowsPrinterBackend(PrinterBackend):
                     timeout_s=track_timeout_s,
                 )
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            result.outcome = JobOutcome.TRACKING_FAILED
-            result.history.append(f"tracking failed: {exception_summary(exc)}")
-            log_event(
-                logger,
-                logging.WARNING,
-                "job tracking failed; the job was spooled but its outcome is unknown",
-                printer=printer_name,
-                job_id=result.job_id,
-                history=result.history,
-                error=describe_exception(exc),
-            )
+            tracking_failed(result, exc)
         if result.outcome == JobOutcome.VANISHED_UNSEEN:
             # Usually printed before the first poll, but log what the queue
             # holds in case the job was renamed or went somewhere unexpected.
@@ -343,7 +337,7 @@ class WindowsPrinterBackend(PrinterBackend):
             history.append(f"queue check failed: {exception_summary(check_error)}")
         elif job is not None:
             result.job_id = job.job_id
-            flags = ",".join(decode_bits(job.status, JOB_STATUS_BITS)) or "QUEUED"
+            flags = ",".join(job.flags)
             history.append(
                 f"job {job.job_id} {job.document!r} is still in the queue ({flags})"
             )
@@ -648,20 +642,43 @@ def job_matches(document: Optional[str], job_name: str) -> bool:
     return match.group(1) in document
 
 
+def job_state(status: int) -> JobState:
+    """The :class:`JobState` for a job's ``JOB_STATUS_*`` bits.
+
+    PRINTED / COMPLETE win over everything, then DELETING / DELETED, then the
+    error bits (ERROR, OFFLINE, PAPEROUT, BLOCKED_DEVQ, USER_INTERVENTION).
+    """
+    if status & JOB_STATUS_DONE_MASK:
+        return JobState.DONE
+    if status & JOB_STATUS_DELETED_MASK:
+        return JobState.DELETED
+    if status & JOB_STATUS_ERROR_MASK:
+        return JobState.ERROR
+    return JobState.ACTIVE
+
+
+def job_snapshot(job: Mapping[str, Any]) -> JobSnapshot:
+    """A ``JOB_INFO_1`` dict from ``EnumJobs`` as a :class:`JobSnapshot`."""
+    status = int(job.get("Status") or 0)
+    return JobSnapshot(
+        job_id=int(job.get("JobId") or 0),
+        document=job.get("pDocument") or "",
+        state=job_state(status),
+        # No bits at all: the job is waiting in the queue.
+        flags=tuple(decode_bits(status, JOB_STATUS_BITS)) or ("QUEUED",),
+        status_text=job.get("pStatus") or "",
+        pages_printed=int(job.get("PagesPrinted") or 0),
+        total_pages=int(job.get("TotalPages") or 0),
+    )
+
+
 def _find_job(handle: Any, job_name: str) -> Optional[JobSnapshot]:
     """Find our job by the attempt ID in its document name."""
     import win32print
 
     for job in win32print.EnumJobs(handle, 0, 999, 1):
         if job_matches(job.get("pDocument"), job_name):
-            return JobSnapshot(
-                job_id=int(job.get("JobId") or 0),
-                document=job.get("pDocument") or "",
-                status=int(job.get("Status") or 0),
-                status_text=job.get("pStatus") or "",
-                pages_printed=int(job.get("PagesPrinted") or 0),
-                total_pages=int(job.get("TotalPages") or 0),
-            )
+            return job_snapshot(job)
     return None
 
 

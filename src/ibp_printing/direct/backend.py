@@ -1,4 +1,7 @@
-"""Direct USB printing layered in front of the platform (GDI / CUPS) backend.
+"""Direct USB printing layered in front of the platform backend.
+
+The platform backend is GDI on Windows; on Linux it has no queues
+(:mod:`ibp_printing.backends.linux`), so only direct printers print there.
 
 :class:`DirectFirstBackend` wraps the platform backend:
 
@@ -8,8 +11,12 @@
   queues. Direct discovery never raises: a failure is logged and recorded in
   ``discovery.errors``, and the queues are still returned.
 * ``print_to_candidate()`` / ``print_image()`` send a direct candidate's job
-  over USB with :func:`ibp_printing.direct.session.print_label`, and anything
-  else to the platform backend.
+  over USB with the session for its model's protocol
+  (:mod:`ibp_printing.printers`): :func:`ibp_printing.direct.session.print_label`
+  for the PM2411BT, :func:`ibp_printing.direct.plain_tspl.print_label` for
+  plain-TSPL printers such as the SP310, and
+  :func:`ibp_printing.direct.dymo_lw.print_label` for the DYMO LabelWriter
+  450 Turbo. Anything else goes to the platform backend.
 
 Outcome mapping (direct jobs):
 
@@ -25,11 +32,12 @@ Outcome mapping (direct jobs):
   UNCERTAIN, TIMEOUT or ERROR) and history. Only COMPLETED is ``ok``; after
   any other outcome nothing is retried or sent elsewhere.
 
-``track_timeout_s``: a direct job is always followed (the printer pushes
-``SSSGETPRINTING:DOING`` / ``DONE``), so the outcome is never NOT_TRACKED,
-even with ``track_timeout_s=0``. The wait for DONE after DOING is
+``track_timeout_s``: a direct job is always followed (the PM2411BT pushes
+``SSSGETPRINTING:DOING`` / ``DONE``; a plain-TSPL printer's or a
+LabelWriter's status byte shows it printing, then ready), so the outcome is
+never NOT_TRACKED, even with ``track_timeout_s=0``. The wait for the end of the print is
 ``max(track_timeout_s, SessionTimeouts.done_s)`` (30 s by default); the other
-waits (pre-check, write, 10 s for DOING) keep their defaults.
+waits (pre-check, write, 10 s for the start) keep their defaults.
 """
 
 import dataclasses
@@ -40,9 +48,11 @@ from typing import Any, Callable, Optional
 from PIL import Image
 
 from ibp_printing.backends.base import PrinterBackend, PrintError
+from ibp_printing.direct import dymo_lw, plain_tspl
 from ibp_printing.direct.config import direct_mode, log_direct_mode
 from ibp_printing.direct.session import (
     DirectPrintError,
+    SessionResult,
     SessionTimeouts,
     StatusProbe,
     print_label,
@@ -61,8 +71,8 @@ from ibp_printing.models import (
     Discovery,
     PrinterCandidate,
     PrintResult,
-    is_supported_direct_model,
 )
+from ibp_printing.printers import PrinterModel, Protocol, direct_model_for_mdl
 
 logger = get_logger(__name__)
 
@@ -174,12 +184,14 @@ class DirectFirstBackend(PrinterBackend):
             return [], [f"direct USB discovery failed: {exc!r}"]
 
     def probe(self, device: DirectDevice) -> StatusProbe:
-        """Label-safe status probe (SSSGETCAP / SSSGETPAPER only); never raises.
+        """Label-safe status probe for the device's protocol; never raises.
 
-        Only supported models are probed: another printer could print the
-        query text.
+        The PM2411BT is asked SSSGETCAP / SSSGETPAPER, a plain-TSPL printer
+        ESC ! ?, a LabelWriter ESC A and ESC V. Only supported models are
+        probed: another printer could print the query text.
         """
-        if not is_supported_direct_model(device.model):
+        model = direct_model_for_mdl(device.model)
+        if model is None:
             return StatusProbe(
                 error=f"not probed: model {device.model or '(unknown)'} is not "
                 "supported (another printer could print the query text)"
@@ -196,6 +208,10 @@ class DirectFirstBackend(PrinterBackend):
             )
             return StatusProbe(error=f"cannot open {device.path}: {exc}")
         with transport:
+            if model.protocol is Protocol.TSPL:
+                return plain_tspl.probe_status(transport, timeouts=self.timeouts)
+            if model.protocol is Protocol.DYMO_LW:
+                return dymo_lw.probe_status(transport, timeouts=self.timeouts)
             return probe_status(transport, timeouts=self.timeouts)
 
     def open_device(self, device: DirectDevice) -> Transport:
@@ -300,7 +316,8 @@ class DirectFirstBackend(PrinterBackend):
         device = candidate.direct_device
         if device is None:
             raise ValueError(f"{candidate.name} is not a direct USB printer")
-        if not candidate.usable:
+        model = direct_model_for_mdl(device.model)
+        if model is None or not candidate.usable:
             raise DirectPrintError(
                 "printer is not usable: " + "; ".join(candidate.reasons()),
                 "not_usable",
@@ -317,13 +334,15 @@ class DirectFirstBackend(PrinterBackend):
             track_timeout_s=track_timeout_s,
             timeouts=timeouts.to_log(),
             device=device.to_log(),
+            protocol=model.protocol.value if model.protocol else None,
+            media=model.media.describe() if model.media else None,
         )
         transport = self._open(candidate)
         opened_s = round(time.monotonic() - started, 3)
         try:
             with transport:
-                session = print_label(
-                    transport, img, job_name=job_name, timeouts=timeouts
+                session = _run_session(
+                    model, transport, img, job_name=job_name, timeouts=timeouts
                 )
         except DirectPrintError as exc:
             log_event(
@@ -380,6 +399,30 @@ class DirectFirstBackend(PrinterBackend):
                 reason,
                 [f"not sent to {candidate.name}: open failed ({reason}): {exc}"],
             ) from exc
+
+
+def _run_session(
+    model: PrinterModel,
+    transport: Transport,
+    img: Image.Image,
+    *,
+    job_name: str,
+    timeouts: SessionTimeouts,
+) -> SessionResult:
+    """One print with the session for ``model``'s protocol."""
+    if model.protocol is Protocol.TSPL:
+        if model.media is None:
+            raise ValueError(f"{model.name} has no media size")
+        return plain_tspl.print_label(
+            transport, img, media=model.media, job_name=job_name, timeouts=timeouts
+        )
+    if model.protocol is Protocol.DYMO_LW:
+        if model.media is None:
+            raise ValueError(f"{model.name} has no media size")
+        return dymo_lw.print_label(
+            transport, img, media=model.media, job_name=job_name, timeouts=timeouts
+        )
+    return print_label(transport, img, job_name=job_name, timeouts=timeouts)
 
 
 def wrap_backend(inner: PrinterBackend) -> PrinterBackend:

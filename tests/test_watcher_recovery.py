@@ -16,9 +16,9 @@ from unittest import mock
 
 import ibp_printing
 from ibp_printing.models import JobOutcome
-from ibp_printing.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
-from ibp_printing.watcher import service
-from ibp_printing.watcher.detect import (
+from ibp_printing.shipping.paths import CHECK_PRINTER_DIR, PRINTED_DIR, TO_PRINT_DIR
+from ibp_printing.apps.watcher import service
+from ibp_printing.apps.watcher.detect import (
     TransientReadError,
     download_in_progress,
     is_transient_os_error,
@@ -28,8 +28,8 @@ from ibp_printing.watcher.detect import (
     sha256_bytes,
     wait_until_stable,
 )
-from ibp_printing.watcher.service import RETRY
-from ibp_printing.watcher.state import FolderState, Reservation, StateFile
+from ibp_printing.apps.watcher.service import RETRY
+from ibp_printing.apps.watcher.state import FolderState, Reservation, StateFile
 
 from test_watcher import (  # pylint: disable=wrong-import-order
     FakeBackend,
@@ -289,7 +289,7 @@ class DedupeTests(TempDirTest):
         watcher._sleep = lambda seconds: None
         path = make_label(self.dir / "label.png")
         with mock.patch(
-            "ibp_printing.watcher.core.os.rename",
+            "ibp_printing.apps.watcher.core.os.rename",
             side_effect=PermissionError(13, "in use"),
         ):
             outcome = watcher.process_path(path)
@@ -462,7 +462,9 @@ class StateFileTests(TempDirTest):
             ),
             encoding="utf-8",
         )
-        with self.assertLogs("ibp_printing.watcher.state", logging.WARNING) as logs:
+        with self.assertLogs(
+            "ibp_printing.apps.watcher.state", logging.WARNING
+        ) as logs:
             loaded = StateFile(state.path).load(self.dir)
         assert loaded.folder is not None
         self.assertEqual(loaded.folder.seen_until, 50.0)
@@ -483,7 +485,7 @@ class StateFileTests(TempDirTest):
         }
         state.path.parent.mkdir(parents=True, exist_ok=True)
         state.path.write_text(json.dumps(doc), encoding="utf-8")
-        with self.assertLogs("ibp_printing.watcher.state", logging.WARNING):
+        with self.assertLogs("ibp_printing.apps.watcher.state", logging.WARNING):
             loaded = StateFile(state.path).load(self.dir)
         self.assertEqual(list(loaded.reservations), ["good"])
 
@@ -499,7 +501,9 @@ class StateFileTests(TempDirTest):
             with self.subTest(content=content):
                 state.path.parent.mkdir(parents=True, exist_ok=True)
                 state.path.write_text(content, encoding="utf-8")
-                with self.assertLogs("ibp_printing.watcher.state", logging.WARNING):
+                with self.assertLogs(
+                    "ibp_printing.apps.watcher.state", logging.WARNING
+                ):
                     loaded = state.load(self.dir)
                 self.assertIsNone(loaded.folder)
                 self.assertEqual(loaded.reservations, {})
@@ -524,7 +528,9 @@ class StartupTests(TempDirTest):
         make_label(self.dir / "old-label.png")
         make_label(self.dir / "photo.png", size=(1600, 1000))
         watcher, _ = self.make_watcher(state=self.state_file())
-        with self.assertLogs("ibp_printing.watcher.service", logging.WARNING) as logs:
+        with self.assertLogs(
+            "ibp_printing.apps.watcher.service", logging.WARNING
+        ) as logs:
             watcher.start()
         self.addCleanup(watcher.stop)
         ignored = [line for line in logs.output if "IGNORED" in line]
@@ -546,7 +552,7 @@ class StartupTests(TempDirTest):
             service, "arrival_time", lambda path: times.get(path, time.time())
         ):
             with self.assertLogs(
-                "ibp_printing.watcher.service", logging.WARNING
+                "ibp_printing.apps.watcher.service", logging.WARNING
             ) as logs:
                 watcher.start()
             self.addCleanup(watcher.stop)
@@ -678,7 +684,7 @@ class HealthTests(TempDirTest):
         old.join(5)
         self.assertFalse(watcher.observer_alive())
         missed = make_label(self.dir / "missed.png", seed=3)  # no observer
-        with self.assertLogs("ibp_printing.watcher.service", logging.CRITICAL):
+        with self.assertLogs("ibp_printing.apps.watcher.service", logging.CRITICAL):
             self.assertFalse(watcher.check_observer())
         self.assertIsNot(watcher._observer, old)
         self.assertTrue(watcher.observer_alive())
@@ -711,7 +717,7 @@ class HealthTests(TempDirTest):
         ibp_printing.set_backend(FakeBackend())
         state = self.state_file()
         watcher, _ = self.make_watcher(state=state)
-        with self.assertLogs("ibp_printing.watcher.service", logging.INFO) as logs:
+        with self.assertLogs("ibp_printing.apps.watcher.service", logging.INFO) as logs:
             watcher.heartbeat()
         self.assertTrue(any("heartbeat" in line for line in logs.output))
         self.assertIsNotNone(StateFile(state.path).load(self.dir).folder)

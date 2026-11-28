@@ -14,7 +14,7 @@ from printing_helpers import quiet_logging
 from ibp_printing import jobs
 from ibp_printing.backends import PrintError
 from ibp_printing.backends import windows
-from ibp_printing.models import JobOutcome, JobSnapshot
+from ibp_printing.models import JobOutcome
 from ibp_printing.render import compute_draw_rect
 from ibp_printing.winconst import (
     DEVCAP_HORZRES,
@@ -795,7 +795,9 @@ class JobTrackingTests(WindowsBackendTestCase):
         self.assertEqual(result.outcome, JobOutcome.TIMEOUT)
 
     def test_tracking_failure_is_tracking_failed_with_history(self):
-        snapshot = JobSnapshot(job_id=99, document=JOB_NAME, status=PAPEROUT)
+        snapshot = windows.job_snapshot(
+            {"JobId": 99, "pDocument": JOB_NAME, "Status": PAPEROUT}
+        )
         with mock.patch.object(
             windows,
             "_find_job",

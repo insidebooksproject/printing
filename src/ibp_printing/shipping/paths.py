@@ -237,7 +237,7 @@ def save_for_retry(
             ``recipient_label``, ``recipient_key``, ``app``, ``created``).
             It is written to the sidecar ``<png>.json`` *before* the label
             appears, and, when it has a ``tracking_code``, the label journal
-            marks that label ``queued`` (see :mod:`ibp_printing.labels`). A
+            marks that label ``queued`` (see :mod:`ibp_printing.shipping.labels`). A
             sidecar or journal problem is logged and never stops the label
             from being saved.
 
@@ -270,7 +270,7 @@ def save_for_retry(
     log_event(logger, logging.WARNING, "label saved to print queue", path=str(final))
     if meta is not None and meta.get("tracking_code"):
         # pylint: disable-next=import-outside-toplevel,cyclic-import
-        from ibp_printing import labels
+        from ibp_printing.shipping import labels
 
         labels.update_status_from_meta(meta, labels.QUEUED, file=str(final))
     return final

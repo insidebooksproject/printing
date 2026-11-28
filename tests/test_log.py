@@ -1,6 +1,7 @@
 """Tests for structured logging."""
 
 import contextlib
+import datetime
 import io
 import json
 import logging
@@ -19,9 +20,11 @@ from ibp_printing.log import (
     SafeRotatingFileHandler,
     add_context,
     attempt,
+    configure_error_log,
     configure_logging,
     current_attempt_id,
     describe_exception,
+    error_log_file_name,
     exception_summary,
     get_logger,
     log_event,
@@ -40,6 +43,7 @@ class CaptureMixin(unittest.TestCase):
         handler = logging.StreamHandler(self.stream)
         handler.setFormatter(self.formatter)
         handler.addFilter(add_context)
+        self.handler = handler
         self.logger = get_logger(f"test.{type(self).__name__}")
         self.logger.setLevel(logging.DEBUG)
         self.logger.propagate = False
@@ -85,7 +89,26 @@ class JsonFormatterTests(CaptureMixin):
         self.assertEqual(record["attempt_id"], attempt_id)
         self.assertEqual(record["msg"], "hello")
         self.assertEqual(record["data"], {"printer": "DYMO 0922:0028", "n": [1, 2]})
-        self.assertRegex(record["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}$")
+        self.assertRegex(
+            record["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}[+-]\d\d:\d\d$"
+        )
+
+    def test_timestamp_has_utc_offset(self):
+        log_record = self.logger.makeRecord(
+            self.logger.name, logging.INFO, __file__, 0, "known time", (), None
+        )
+        log_record.created = 1_795_000_000.25
+        record = json.loads(JsonFormatter().format(log_record))
+        when = datetime.datetime.fromisoformat(record["ts"])
+        self.assertIsNotNone(when.utcoffset())
+        self.assertEqual(when.timestamp(), 1_795_000_000.25)
+
+    def test_app_and_version(self):
+        self.handler.setFormatter(JsonFormatter(app="shippy", version="1.2.3"))
+        self.logger.warning("named")
+        record = json.loads(self.lines()[0])
+        self.assertEqual(list(record)[:4], ["ts", "level", "app", "version"])
+        self.assertEqual((record["app"], record["version"]), ("shippy", "1.2.3"))
 
     def test_data_may_use_parameter_names(self):
         # PrintService events carry "level" and "message" keys (C1).
@@ -219,6 +242,77 @@ class ConfigureLoggingTests(unittest.TestCase):
         handlers = logging.getLogger("ibp_printing").handlers
         self.assertEqual(len(handlers), 3)
         self.assertIn("logging configured", stderr.getvalue())
+
+
+class ConfigureErrorLogTests(unittest.TestCase):
+    """configure_error_log."""
+
+    def setUp(self):
+        reset_logging()
+        tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
+        self.addCleanup(tmp.cleanup)
+        self.addCleanup(reset_logging)
+        self.log_dir = Path(tmp.name) / "logs"
+        self.path = self.log_dir / "errors-shippy-gui.jsonl"
+
+    def records(self) -> list[dict]:
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        lines = self.path.read_text(encoding="utf-8").splitlines()
+        return [json.loads(line) for line in lines]
+
+    def test_whole_app_at_warning_and_above(self):
+        returned = configure_error_log(
+            "shippy-gui", version="0.9.3", log_dir=self.log_dir
+        )
+        self.assertEqual(returned, self.log_dir)
+        app_logger = logging.getLogger("shippy_gui.test")
+        app_logger.setLevel(logging.DEBUG)
+        app_logger.info("routine")
+        app_logger.warning("odd")
+        log_event(get_logger("x"), logging.ERROR, "printer failed", printer="BOB")
+        try:
+            raise ValueError("bad")
+        except ValueError:
+            app_logger.exception("purchase failed")
+
+        odd, printer, purchase = self.records()
+        self.assertEqual(odd["msg"], "odd")
+        self.assertEqual(odd["level"], "WARNING")
+        self.assertEqual(odd["logger"], "shippy_gui.test")
+        self.assertEqual((odd["app"], odd["version"]), ("shippy-gui", "0.9.3"))
+        self.assertEqual(printer["data"], {"printer": "BOB"})
+        self.assertIn("ValueError: bad", purchase["exc"])
+
+    def test_printer_logs_and_error_log_together(self):
+        configure_logging(self.log_dir, app="shippy-gui", console=False)
+        configure_error_log("shippy-gui", log_dir=self.log_dir)
+        log_event(get_logger("x"), logging.DEBUG, "detail")
+        log_event(get_logger("x"), logging.ERROR, "failed")
+        self.assertEqual([record["msg"] for record in self.records()], ["failed"])
+
+    def test_idempotent_and_root_level_untouched(self):
+        root = logging.getLogger()
+        level = root.level
+        count = len(root.handlers)
+        configure_error_log("shippy-gui", log_dir=self.log_dir)
+        configure_error_log("shippy-gui", log_dir=self.log_dir)
+        self.assertEqual(len(root.handlers), count + 1)
+        self.assertEqual(root.level, level)
+        logging.getLogger("other").error("once")
+        self.assertEqual(len(self.records()), 1)
+
+    def test_level(self):
+        configure_error_log("shippy-gui", log_dir=self.log_dir, level=logging.ERROR)
+        logging.getLogger("other").warning("skipped")
+        logging.getLogger("other").error("kept")
+        self.assertEqual([record["msg"] for record in self.records()], ["kept"])
+
+    def test_default_dir_and_file_name(self):
+        with mock.patch("ibp_printing.log.default_log_dir", return_value=self.log_dir):
+            self.assertEqual(configure_error_log("shippy-gui"), self.log_dir)
+        self.assertEqual(error_log_file_name("a/b c"), "errors-a-b-c.jsonl")
+        self.assertEqual(error_log_file_name(".."), "errors-ibp-printing.jsonl")
 
 
 class SafeRotatingFileHandlerTests(unittest.TestCase):
