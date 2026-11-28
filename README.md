@@ -2,8 +2,8 @@
 
 Shared USB label-printer discovery, printing, and diagnostics for the
 [Inside Books Project](https://insidebooksproject.org/). Its users are the
-shipping apps [shippy](https://github.com/insidebooksproject/shippy) (CLI) and
-[shippy-gui](https://github.com/insidebooksproject/shippy-gui) (PySide6), which
+shipping apps in [shippy](https://github.com/insidebooksproject/shippy), the
+`shippy` CLI and `shippy-gui` (PySide6, its `[gui]` extra), which
 buy EasyPost postage and print a 4x6 label on a USB label printer (DYMO,
 Zebra, PM2411BT, ...), and the three commands this package installs:
 
@@ -35,7 +35,7 @@ This library is the one place that:
 
 ## Install
 
-Apps depend on a release tag (shippy and shippy-gui both pin `v0.5.0`):
+Apps depend on a release tag (shippy, for both its apps, pins `v0.5.0`):
 
 ```sh
 uv add "ibp-printing @ git+https://github.com/insidebooksproject/printing@v0.5.0"
@@ -470,8 +470,8 @@ tool: the intake station's `ibp-print-server` unit upgrades on every start
 ([docs/print-server.md](docs/print-server.md)), and the kiosk image upgrades
 the watcher and the print server each time they start. Roll back by pushing
 an older commit (`git push --force-with-lease origin <sha>:deploy`) and
-restarting. For shippy and shippy-gui, bump `version` in `pyproject.toml`,
-tag it `vX.Y.Z`, and pin the new tag in each app.
+restarting. For shippy (both its apps), bump `version` in `pyproject.toml`,
+tag it `vX.Y.Z`, and pin the new tag in shippy's `pyproject.toml`.
 
 ## Development
 
@@ -484,7 +484,8 @@ Package layout (`src/ibp_printing/`):
 | Apps | `apps/server`, `apps/watcher/`, `apps/diag/` | `ibp-print-server`, `ibp-label-watcher(w)`, `ibp-print-diag` |
 
 `ibp_printing.labels` and `ibp_printing.diagnostics` are thin aliases of their
-new homes, kept because shippy and shippy-gui import them.
+new homes, kept because shippy (and the old shippy-gui repo the laptops still
+run) import them.
 
 ```sh
 uv sync --extra watcher --dev
