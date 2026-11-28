@@ -138,6 +138,7 @@ barcode bars on whole dots, plus a rescue that keeps 1 px lines and lone
 pixels from vanishing. Landscape images are rotated, never cropped.
 
 Details, hardware findings and the protocol: [docs/printers/pm2411bt.md](docs/printers/pm2411bt.md).
+Windows USB dropouts (Modern Standby idle teardown) and the power settings that fix them: [docs/windows-usb-power.md](docs/windows-usb-power.md).
 
 ## Printer naming rule
 
