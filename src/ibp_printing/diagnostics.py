@@ -1,8 +1,8 @@
 """Moved to :mod:`ibp_printing.apps.diag`; kept so old imports still work.
 
-shippy uses ``build_report`` and shippy-gui's ``diagnose-printers`` script is
-``ibp_printing.diagnostics:main``. Every public name of the old single-module
-``ibp_printing.diagnostics`` is still importable from here.
+shippy uses ``build_report``, and its ``diagnose-printers`` script (installed
+with both apps) is ``ibp_printing.diagnostics:main``. Every public name of the
+old single-module ``ibp_printing.diagnostics`` is still importable from here.
 """
 
 import sys
