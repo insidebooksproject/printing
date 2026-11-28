@@ -138,6 +138,12 @@ the printed copies had to be thrown away.
    the volunteer buys anyway, move the earlier still-queued label for that
    recipient from `to-print` to `hold-refund` and tell them to refund it.
 
+Option 2 is out since 2026-11-17: a duplicate or unprinted label is an
+accepted risk, refunded by the weekly `ibp-label-refund` job on ibp-server
+if USPS never scans it, and volunteer prompts are kept to what the refund
+job can't cover. Option 1 still stands: the refund doesn't stop a stale
+copy from going out in a box.
+
 Rejected for now: having the watcher ask EasyPost for refund/tracking status
 (couples ibp-printing to EasyPost and needs the API key on the watcher side).
 Estimate: half a day across this repo and both apps. Push ibp-printing before
